@@ -1,5 +1,6 @@
+
 // --- 1. TAILWIND CONFIGURATION ---
-localStorage.clear; 
+// localStorage.clear(); // Commented out to keep you logged in during testing
 tailwind.config = {
     theme: {
         extend: {
@@ -41,10 +42,10 @@ let currentStoreCategory = 'all';
 // 🔥 BANNER AD STATE
 let bannerConfig = { code: null, isGlobal: false };
 
-// 💰 EARNINGS RATES (Default, updated from DB)
+// 💰 EARNINGS RATES
 let appRates = {
-    videoView: 0.001, // $1 per 1000 views
-    assetDownload: 0.02 // $0.02 per download
+    videoView: 0.001, 
+    assetDownload: 0.02 
 };
 
 // --- 3. AUTHENTICATION LOGIC ---
@@ -54,9 +55,10 @@ async function forceStartApp(user) {
     
     // Inject Modals
     injectStoreAdModal();
-    injectPaymentModal(); 
+    injectPaymentModal();
+    injectCashoutModal();
 
-    // Fetch Global Config (Store Ads, Banner Ads, Earnings Rates)
+    // Fetch Global Config
     await fetchAppConfig();
 
     let safeName = "User";
@@ -65,6 +67,7 @@ async function forceStartApp(user) {
         if (userData && userData.username) safeName = userData.username;
         else if (currentUser.email) safeName = currentUser.email.split('@')[0];
         
+        // Load Following List
         const { data: follows } = await sb.from('follows').select('following_id').eq('follower_id', currentUser.id);
         if(follows) follows.forEach(f => myFollowingIds.add(f.following_id));
         
@@ -80,7 +83,6 @@ async function forceStartApp(user) {
     loadVideos();
     loadAssets('all'); 
     
-    // Check Banner Visibility for the first screen (Feed)
     checkBannerVisibility('feedScreen');
 
     if(currentUser.email === "admin@gmail.com") document.getElementById('adminBtn').classList.remove('hidden');
@@ -90,36 +92,29 @@ async function forceStartApp(user) {
 
 async function fetchAppConfig() {
     try {
-        // 1. Fetch Store Ad URL
         const { data: storeData } = await sb.from('app_config').select('value').eq('key', 'store_ad_url').single();
         if (storeData && storeData.value && storeData.value.length > 5) storeAdUrl = storeData.value;
 
-        // 2. Fetch Banner Code
         const { data: bannerCodeData } = await sb.from('app_config').select('value').eq('key', 'banner_ad_code').single();
         if (bannerCodeData && bannerCodeData.value) bannerConfig.code = bannerCodeData.value;
 
-        // 3. Fetch Banner Global Setting
         const { data: bannerGlobalData } = await sb.from('app_config').select('value').eq('key', 'banner_global').single();
         if (bannerGlobalData) bannerConfig.isGlobal = (bannerGlobalData.value === 'true');
 
-        // 4. 🔥 FETCH EARNING RATES (Admin Controlled)
         const { data: viewRate } = await sb.from('app_config').select('value').eq('key', 'rate_video_view').single();
         if (viewRate && viewRate.value) appRates.videoView = parseFloat(viewRate.value);
 
         const { data: dlRate } = await sb.from('app_config').select('value').eq('key', 'rate_asset_download').single();
         if (dlRate && dlRate.value) appRates.assetDownload = parseFloat(dlRate.value);
 
-        // Initialize Banner
         initBannerAd();
 
     } catch (e) { console.log("Config Fetch Error", e); }
 }
 
-// 🔥 INITIALIZE BANNER AD
 function initBannerAd() {
     const existing = document.getElementById('globalAppBanner');
     if(existing) existing.remove();
-
     if (!bannerConfig.code || bannerConfig.code.trim() === "") return;
 
     const div = document.createElement('div');
@@ -138,10 +133,8 @@ function initBannerAd() {
             <div id="bannerContent" class="min-w-[300px] min-h-[50px] flex justify-center items-center overflow-hidden bg-gray-800/50 rounded-md"></div>
         </div>
     `;
-
     div.appendChild(wrapper);
     document.body.appendChild(div);
-
     const contentDiv = wrapper.querySelector('#bannerContent');
     setAndExecuteScript(contentDiv, bannerConfig.code);
 }
@@ -172,7 +165,78 @@ function checkBannerVisibility(screenId) {
     }
 }
 
-// --- 5. MODALS (STORE & PAYMENT) ---
+// --- 5. MODALS (STORE, PAYMENT & CASHOUT) ---
+
+function injectCashoutModal() {
+    if(document.getElementById('cashoutModal')) return;
+    const modalHtml = `
+    <div id="cashoutModal" class="fixed inset-0 z-[80] bg-black/95 hidden flex flex-col items-center justify-center p-6">
+        <div class="bg-gray-800 rounded-xl w-full max-w-sm p-6 border border-gray-700 relative">
+            <button onclick="document.getElementById('cashoutModal').classList.add('hidden')" class="absolute top-3 right-3 text-gray-400"><i class="fas fa-times"></i></button>
+            <h3 class="text-xl font-bold text-white mb-2 text-center">Withdraw Funds</h3>
+            <p class="text-xs text-gray-400 text-center mb-6">Minimum withdrawal: $10.00</p>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 mb-1">Select Method</label>
+                    <select id="cashoutMethod" onchange="toggleCashoutFields()" class="w-full bg-gray-900 text-white border border-gray-600 rounded p-3 focus:border-brand-500 outline-none">
+                        <option value="upi">UPI (India)</option>
+                        <option value="paypal">PayPal (International)</option>
+                    </select>
+                </div>
+                <div id="fieldUpi">
+                    <label class="block text-xs font-bold text-gray-400 mb-1">UPI ID</label>
+                    <input type="text" id="cashoutUpi" placeholder="example@upi" class="w-full bg-gray-900 text-white border border-gray-600 rounded p-3 outline-none">
+                </div>
+                <div id="fieldPaypal" class="hidden">
+                    <label class="block text-xs font-bold text-gray-400 mb-1">PayPal Email</label>
+                    <input type="email" id="cashoutPaypal" placeholder="email@paypal.com" class="w-full bg-gray-900 text-white border border-gray-600 rounded p-3 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 mb-1">Amount ($)</label>
+                    <input type="number" id="cashoutAmount" placeholder="0.00" class="w-full bg-gray-900 text-white border border-gray-600 rounded p-3 outline-none">
+                </div>
+                <button onclick="submitCashout()" class="w-full bg-brand-500 hover:bg-brand-600 text-black font-bold py-3 rounded-lg mt-2 transition">
+                    Request Withdrawal <i class="fas fa-paper-plane ml-1"></i>
+                </button>
+            </div>
+        </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+window.toggleCashoutFields = () => {
+    const method = document.getElementById('cashoutMethod').value;
+    if(method === 'upi') {
+        document.getElementById('fieldUpi').classList.remove('hidden');
+        document.getElementById('fieldPaypal').classList.add('hidden');
+    } else {
+        document.getElementById('fieldUpi').classList.add('hidden');
+        document.getElementById('fieldPaypal').classList.remove('hidden');
+    }
+};
+
+window.openCashoutModal = () => {
+    document.getElementById('cashoutModal').classList.remove('hidden');
+};
+
+window.submitCashout = async () => {
+    const method = document.getElementById('cashoutMethod').value;
+    const amount = parseFloat(document.getElementById('cashoutAmount').value);
+    let details = "";
+    if (amount < 10) return alert("Minimum withdrawal is $10");
+    if (isNaN(amount)) return alert("Invalid amount");
+    if (method === 'upi') {
+        details = document.getElementById('cashoutUpi').value;
+        if (!details.includes('@')) return alert("Invalid UPI ID");
+    } else {
+        details = document.getElementById('cashoutPaypal').value;
+        if (!details.includes('@')) return alert("Invalid PayPal Email");
+    }
+    alert(`Withdrawal Request Sent!\n\nMethod: ${method.toUpperCase()}\nDetails: ${details}\nAmount: $${amount}`);
+    document.getElementById('cashoutModal').classList.add('hidden');
+};
+
+
 function injectStoreAdModal() {
     if(document.getElementById('storeAdModal')) return;
     const modalHtml = `
@@ -186,10 +250,10 @@ function injectStoreAdModal() {
         </div>
         <div class="absolute bottom-10 right-5 z-50 flex flex-col items-end pointer-events-none">
             <div id="storeAdTimerBox" class="bg-gray-900/80 text-white border border-gray-600 px-6 py-3 rounded-full backdrop-blur-md mb-2 font-bold pointer-events-auto">
-                Reward in <span id="storeAdTimer" class="text-brand-500">10</span>s
+                Download in <span id="storeAdTimer" class="text-brand-500">10</span>s
             </div>
-            <button id="storeAdSkipBtn" onclick="skipStoreAdAndDownload()" class="hidden bg-white text-black font-bold px-6 py-3 rounded-full hover:bg-gray-200 transition shadow-xl transform scale-105 pointer-events-auto">
-                Close & Download <i class="fas fa-download ml-2"></i>
+            <button id="storeAdSkipBtn" onclick="skipStoreAdAndDownload()" class="hidden bg-green-500 text-white font-bold px-6 py-3 rounded-full hover:bg-green-600 transition shadow-xl transform scale-105 pointer-events-auto border-2 border-white">
+                Download Now <i class="fas fa-download ml-2"></i>
             </button>
         </div>
     </div>`;
@@ -222,7 +286,7 @@ function injectPaymentModal() {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// --- 6. STANDARD FUNCTIONS & NAVIGATION ---
+// --- 6. STANDARD FUNCTIONS ---
 
 function startMessageListener() {
     if(!currentUser) return;
@@ -286,7 +350,6 @@ window.showScreen = (id) => {
     const activeBtn = Array.from(document.querySelectorAll('.nav-btn')).find(b => b.getAttribute('onclick').includes(id));
     if(activeBtn) activeBtn.classList.replace('text-gray-500', 'text-white');
     
-    // Logic per screen
     if(id === 'feedScreen') setTimeout(setupScrollObserver, 100);
     if(id === 'storeScreen') loadAssets(currentStoreCategory); 
     if(id === 'inboxScreen') { document.getElementById('inboxBadge').classList.add('hidden'); loadInbox(); }
@@ -295,7 +358,7 @@ window.showScreen = (id) => {
     checkBannerVisibility(id);
 };
 
-// --- 7. FEED & VIDEO LOGIC ---
+// --- 7. FEED & VIDEO LOGIC (UPDATED FOR INSTAGRAM STYLE FOLLOW) ---
 async function loadVideos() {
     const { data: videos } = await sb.from('videos').select('*').order('created_at', { ascending: false });
     const container = document.getElementById('reelContainer');
@@ -308,6 +371,15 @@ async function loadVideos() {
             const safeUser = data.user || "User";
             const hasAd = data.ad_url && data.ad_url.length > 5 && data.ad_url !== 'null';
             
+            // 🔥 FOLLOW BUTTON LOGIC
+            const isMe = currentUser && data.uid === currentUser.id;
+            const isFollowing = myFollowingIds.has(data.uid);
+            
+            let followBtnHtml = '';
+            if (!isMe && !isFollowing) {
+                followBtnHtml = `<button id="feed_follow_${data.id}" onclick="followUserFromFeed('${data.uid}', 'feed_follow_${data.id}')" class="reel-follow-btn">Follow</button>`;
+            }
+
             html += `
                 <div class="reel-item relative h-full w-full bg-black overflow-hidden">
                     <video 
@@ -338,10 +410,22 @@ async function loadVideos() {
                     </div>
 
                     <div class="absolute inset-0 flex flex-col justify-end p-4 pointer-events-none z-10 pb-[70px]">
-                        <div class="mb-4 pointer-events-auto w-3/4">
-                            <h3 class="font-bold text-white text-md shadow-black drop-shadow-md">@${safeUser}</h3>
-                            <p class="text-sm text-gray-100 shadow-black drop-shadow-md mb-2 leading-tight">${data.desc || ''}</p>
+                        
+                        <!-- 🔥 NEW: INSTAGRAM STYLE HEADER ROW (PFP + NAME + FOLLOW) -->
+                        <div class="reel-header-row pointer-events-auto mb-2">
+                            <div class="reel-pfp-container" onclick="openPublicProfile('${data.uid}', '${safeUser}')">
+                                <div class="w-full h-full rounded-full bg-black flex items-center justify-center font-bold text-sm text-white border-2 border-black">
+                                    ${safeUser[0].toUpperCase()}
+                                </div>
+                            </div>
+                            <span class="reel-username-text" onclick="openPublicProfile('${data.uid}', '${safeUser}')">${safeUser}</span>
+                            ${followBtnHtml}
                         </div>
+
+                        <div class="mb-2 pointer-events-auto w-3/4">
+                            <p class="text-sm text-gray-100 shadow-black drop-shadow-md leading-tight">${data.desc || ''}</p>
+                        </div>
+                        
                         <div class="absolute right-2 bottom-16 flex flex-col items-center space-y-6 pointer-events-auto pb-4">
                             <button onclick="handleLike(this, '${data.id}', ${data.likes || 0})" class="flex flex-col items-center"><i class="fas fa-heart text-3xl drop-shadow-lg ${isLiked}"></i><span class="text-xs font-bold text-white">${data.likes || 0}</span></button>
                             <button onclick="openComments('${data.id}')" class="flex flex-col items-center"><i class="fas fa-comment-dots text-3xl drop-shadow-lg text-white"></i><span class="text-xs font-bold text-white">Chat</span></button>
@@ -354,6 +438,26 @@ async function loadVideos() {
         setTimeout(setupScrollObserver, 500);
     } else { container.innerHTML = "<p class='text-center pt-20 text-gray-500'>No videos yet</p>"; }
 }
+
+// 🔥 NEW: Handle Follow Action from Feed
+window.followUserFromFeed = async (targetUid, btnId) => {
+    if (!currentUser) return alert("Please login to follow.");
+    const btn = document.getElementById(btnId);
+    if(btn) btn.style.display = 'none';
+
+    const { error } = await sb.from('follows').insert({ follower_id: currentUser.id, following_id: targetUid });
+    
+    if(!error) {
+        myFollowingIds.add(targetUid);
+        const { data: targetUser } = await sb.from('users').select('followers').eq('uid', targetUid).single();
+        if(targetUser) await sb.from('users').update({ followers: (targetUser.followers || 0) + 1 }).eq('uid', targetUid);
+        const { data: me } = await sb.from('users').select('following').eq('uid', currentUser.id).single();
+        await sb.from('users').update({ following: (me.following || 0) + 1 }).eq('uid', currentUser.id);
+    } else {
+        if(btn) btn.style.display = 'inline-flex';
+        alert("Failed to follow.");
+    }
+};
 
 window.checkAdTrigger = (videoEl, videoId, adUrl) => {
     if (!adUrl || adUrl === 'null' || adUrl.trim() === "" || watchedAds.has(videoId)) return;
@@ -710,7 +814,7 @@ window.uploadFile = async (type) => {
     
     if(!file) return alert("Select File");
 
-    // ASSET VALIDATION (Price, Category, UPI)
+    // ASSET VALIDATION
     let price = 0;
     let upiId = "";
     let qrUrl = "";
@@ -853,12 +957,15 @@ async function loadAssets(category = 'all') {
 
 let pendingDownload = { id: null, url: null };
 
+// 🔥 UPDATED: DOWNLOAD LOGIC WITH BLOB (Fixes Not Downloading)
 window.handleAssetDownload = async (assetId, url, price, upi, qr) => {
     pendingDownload = { id: assetId, url: url };
+    
     if (price > 0) {
         openPaymentModal(upi, qr);
         return;
     }
+
     if (storeAdUrl && storeAdUrl !== 'null' && storeAdUrl.length > 5) {
         const modal = document.getElementById('storeAdModal');
         const frame = document.getElementById('storeAdFrame');
@@ -892,7 +999,7 @@ window.handleAssetDownload = async (assetId, url, price, upi, qr) => {
             } else {
                 clearInterval(interval);
                 timerBox.classList.add('hidden');
-                skipBtn.classList.remove('hidden');
+                skipBtn.classList.remove('hidden'); 
             }
         }, 1000);
     } else {
@@ -947,25 +1054,40 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
+// 🔥 UPDATED: FETCH -> BLOB -> DOWNLOAD (To bypass CORS/Direct Open)
 async function triggerRealDownload(assetId, url) {
-    const link = document.createElement('a');
-    link.href = url; 
-    link.target = '_blank'; 
-    link.download = ''; 
-    document.body.appendChild(link); 
-    link.click(); 
-    document.body.removeChild(link);
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Network response was not ok');
+        
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        // Try to guess extension from blob type, default to png
+        const ext = blob.type.split('/')[1] || 'png';
+        link.download = `asset_${assetId}.${ext}`; 
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
 
-    const { data } = await sb.from('assets').select('downloads').eq('id', assetId).single();
-    const current = data ? (data.downloads || 0) : 0;
-    await sb.from('assets').update({ downloads: current + 1 }).eq('id', assetId);
-    
-    loadAssets(currentStoreCategory);
+        // Update DB
+        const { data } = await sb.from('assets').select('downloads').eq('id', assetId).single();
+        const current = data ? (data.downloads || 0) : 0;
+        await sb.from('assets').update({ downloads: current + 1 }).eq('id', assetId);
+        
+        loadAssets(currentStoreCategory);
+    } catch (e) {
+        console.error("Blob download failed, falling back to window.open", e);
+        window.open(url, '_blank');
+    }
 }
 
-// --- 11. PROFILE, STATS & ADMIN LOGIC (🔥 UPDATED) ---
+// --- 11. PROFILE, STATS & ADMIN LOGIC ---
 
-// 🔥 NEW: UPDATED STATS LOGIC WITH ASSETS & REAL CALCULATION
 window.openStats = async () => {
     document.getElementById('statsModal').classList.remove('hidden');
     const list = document.getElementById('userStatsList');
@@ -982,7 +1104,6 @@ window.openStats = async () => {
     const { data: assets } = await sb.from('assets').select('*').eq('uid', currentUser.id).order('created_at', { ascending: false });
 
     let totalViews = 0;
-    let totalLikes = 0;
     let totalDownloads = 0;
     let totalPendingEarnings = 0;
 
@@ -993,11 +1114,6 @@ window.openStats = async () => {
         html += `<h3 class="text-white font-bold mb-2 ml-1">Your Videos</h3>`;
         videos.forEach(v => {
             totalViews += (v.views || 0);
-            totalLikes += (v.likes || 0);
-            
-            // Calc earnings based on dynamic admin rate
-            // Example: Rate 0.001 means $1 per 1000 views. 
-            // Formula: views * rate
             const vidEarn = (v.views || 0) * appRates.videoView; 
             totalPendingEarnings += vidEarn;
 
@@ -1010,7 +1126,6 @@ window.openStats = async () => {
                     <p class="text-xs text-gray-400 truncate">${v.desc || 'Video'}</p>
                     <div class="flex gap-2">
                         <span class="text-xs bg-gray-800 px-2 py-1 rounded text-white border border-gray-700">👁 ${v.views || 0}</span>
-                        <span class="text-xs bg-gray-800 px-2 py-1 rounded text-brand-500 border border-gray-700">❤ ${v.likes || 0}</span>
                         <span class="text-xs bg-gray-800 px-2 py-1 rounded text-green-400 border border-gray-700">$${vidEarn.toFixed(3)}</span>
                     </div>
                 </div>
@@ -1024,9 +1139,6 @@ window.openStats = async () => {
         assets.forEach(a => {
             const downloads = a.downloads || 0;
             totalDownloads += downloads;
-            
-            // Calc earnings based on dynamic admin rate
-            // Formula: downloads * rate
             const assetEarn = downloads * appRates.assetDownload;
             totalPendingEarnings += assetEarn;
 
@@ -1050,28 +1162,33 @@ window.openStats = async () => {
         html = "<p class='text-gray-500 text-center py-10'>No uploads yet.</p>";
     }
     
+    // 🔥 ADDED CASH OUT BUTTON HERE
+    html += `
+    <div class="mt-6 border-t border-gray-700 pt-4">
+        <button onclick="openCashoutModal()" class="w-full bg-green-500 hover:bg-green-600 text-black font-bold py-3 rounded-lg shadow-lg transform transition active:scale-95">
+            Cash Out Now <i class="fas fa-wallet ml-2"></i>
+        </button>
+        <p class="text-center text-[10px] text-gray-500 mt-2">Only UPI & PayPal Supported</p>
+    </div>
+    `;
+
     list.innerHTML = html;
 
-    // Update Header Stats
     document.getElementById('totalViewsStats').innerText = totalViews;
-    document.getElementById('totalLikesStats').innerText = totalDownloads; // Reusing this ID for downloads count display in logic
-    document.getElementById('totalAdsClicks').innerText = "0"; // Placeholder
+    document.getElementById('totalLikesStats').innerText = totalDownloads;
+    document.getElementById('totalAdsClicks').innerText = "0";
 
-    // Update Balance UI (Split Wallet vs Pending)
-    // The "Cash Out" number usually shows what is available to withdraw (Wallet).
-    // We can show Total Value = Wallet + Pending
     document.getElementById('userBalance').innerHTML = `
         <span class="text-green-400">$${walletBalance.toFixed(2)}</span>
-        <span class="text-[10px] text-gray-500 block">Paid Out</span>
+        <span class="text-[10px] text-gray-500 block">Available</span>
         <span class="text-yellow-400 text-xs mt-1 block">+$${totalPendingEarnings.toFixed(2)} Pending</span>
     `;
 };
 
-// 🔥 ADMIN PANEL (UPDATED WITH RATE CONTROL)
+// 🔥 ADMIN PANEL
 window.openAdminPanel = async () => {
     document.getElementById('adminPanelModal').classList.remove('hidden');
     
-    // Inject Rate Control Inputs if not present
     const rateContainer = document.getElementById('adminRateControl');
     if(!rateContainer.innerHTML.trim()) {
         rateContainer.innerHTML = `
@@ -1095,7 +1212,6 @@ window.openAdminPanel = async () => {
     const list = document.getElementById('adminVideoList');
     list.innerHTML = "<p class='text-center p-4'>Loading...</p>";
     
-    // Fetch videos with high views
     const { data: videos } = await sb.from('videos').select('*').gte('views', 100).order('views', {ascending: false});
     
     let html = '';
@@ -1123,20 +1239,14 @@ window.openAdminPanel = async () => {
     list.innerHTML = html;
 };
 
-// 🔥 UPDATE RATES FUNCTION
 window.updateAppRates = async () => {
     const vRate = document.getElementById('rateViewInput').value;
     const dRate = document.getElementById('rateDlInput').value;
     
     if(!vRate || !dRate) return alert("Enter valid rates");
     
-    // Save to App Config (Supabase)
-    // Upsert logic manually via checking existence or using upsert if table allows
-    
     try {
-        // Update Video Rate
         const { error: e1 } = await sb.from('app_config').upsert({ key: 'rate_video_view', value: vRate }, { onConflict: 'key' });
-        // Update Download Rate
         const { error: e2 } = await sb.from('app_config').upsert({ key: 'rate_asset_download', value: dRate }, { onConflict: 'key' });
 
         if(!e1 && !e2) {
@@ -1268,3 +1378,35 @@ async function loadProfileAssets() {
     else { html = "<p class='col-span-2 text-center text-gray-500 py-10'>No assets</p>"; }
     grid.innerHTML = html;
 }
+
+// 🔥 FIX: PERMANENT PROFILE NAME SAVE
+window.saveProfileName = async () => {
+    const nameInput = document.getElementById('editNameInput');
+    const newName = nameInput.value.trim();
+
+    if (!newName) return alert("Name cannot be empty");
+    if (!currentUser) return alert("Please login first");
+
+    const saveBtn = document.querySelector('#editProfileModal button:last-child');
+    const originalText = saveBtn.innerText;
+    saveBtn.innerText = "Saving...";
+    saveBtn.disabled = true;
+
+    try {
+        const { error } = await sb.from('users').update({ username: newName }).eq('uid', currentUser.id);
+        if (error) throw error;
+        currentUser.displayName = newName;
+        document.getElementById('profileName').innerText = newName; 
+        document.getElementById('profileHeaderName').innerText = '@' + newName;
+        const publicTitle = document.getElementById('publicProfileTitle');
+        if(publicTitle) publicTitle.innerText = '@' + newName;
+        alert("Profile Name Saved Successfully! ✅");
+        closeEditProfile();
+    } catch (e) {
+        console.error("Save Error:", e);
+        alert("Error saving name: " + e.message);
+    } finally {
+        saveBtn.innerText = originalText;
+        saveBtn.disabled = false;
+    }
+};
