@@ -41,19 +41,17 @@
 
         /* 🔥 INSTAGRAM STYLE VIDEO OVERLAY STYLES 🔥 */
         
-        /* 1. Container for PFP, Name, and Button */
         .reel-header-row {
             display: flex;
             align-items: center;
-            margin-bottom: 8px; /* Space between name and caption */
+            margin-bottom: 8px; 
         }
 
-        /* 2. Instagram Style Profile Pic (Gradient Border) */
         .reel-pfp-container {
             width: 38px;
             height: 38px;
             border-radius: 50%;
-            padding: 2px; /* Space for gradient */
+            padding: 2px; 
             background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); 
             margin-right: 10px;
             flex-shrink: 0;
@@ -63,25 +61,23 @@
             width: 100%;
             height: 100%;
             border-radius: 50%;
-            border: 2px solid black; /* Black gap between gradient and image */
+            border: 2px solid black; 
             object-fit: cover;
             display: block;
         }
 
-        /* 3. Username Text */
         .reel-username-text {
             font-weight: 700;
             font-size: 14px;
             color: white;
             text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-            margin-right: 12px; /* Gap between Name and Follow Button */
+            margin-right: 12px; 
         }
 
-        /* 4. The Follow Button (Transparent Box Style) */
         .reel-follow-btn {
-            background: rgba(0, 0, 0, 0.2); /* Slight tint */
-            border: 1.5px solid rgba(255, 255, 255, 0.9); /* White border */
-            border-radius: 8px; /* Rounded corners like the photo */
+            background: rgba(0, 0, 0, 0.2); 
+            border: 1.5px solid rgba(255, 255, 255, 0.9); 
+            border-radius: 8px; 
             padding: 4px 14px;
             color: white;
             font-size: 12px;
@@ -97,9 +93,8 @@
             background: rgba(255, 255, 255, 0.2);
         }
 
-        /* If already following, hide or change style */
         .reel-follow-btn.following {
-            display: none; /* Hide button like Instagram often does, or change style */
+            display: none; 
         }
 
     </style>
@@ -130,6 +125,39 @@
             <div id="debugLog" class="mt-8 text-[10px] text-gray-600 font-mono text-center h-10 overflow-hidden">Ready.</div>
         </div>
     </div>
+
+    <!-- 🔥 FAKE AD PLAYER OVERLAY (NEW FEATURE - ADDED HERE) 🔥 -->
+    <div id="adPlayerOverlay" class="fixed inset-0 z-[200] bg-black hidden flex flex-col items-center justify-center">
+        <!-- Close Button (Hidden initially) -->
+        <button id="closeAdBtn" onclick="closeAdPlayer()" class="absolute top-6 right-6 z-[210] hidden bg-gray-800/80 text-white rounded-full p-2 px-4 text-sm font-bold border border-gray-600">
+            <i class="fas fa-times"></i> Close
+        </button>
+
+        <div class="w-full max-w-md p-6 relative">
+            <p class="text-center text-gray-500 text-xs uppercase tracking-widest mb-4">Advertisement</p>
+            
+            <!-- Ad Box -->
+            <div class="w-full h-80 bg-gray-900 rounded-2xl border border-gray-800 relative overflow-hidden flex flex-col items-center justify-center shadow-2xl">
+                <!-- Glowing Background -->
+                <div class="absolute inset-0 bg-gradient-to-br from-brand-900/20 to-purple-900/20 animate-pulse"></div>
+                
+                <!-- Countdown -->
+                <div class="relative z-10 text-center">
+                    <i class="fas fa-play-circle text-5xl text-gray-700 mb-4"></i>
+                    <h2 class="text-4xl font-black text-white mb-2">WAIT <span id="adCountdown" class="text-brand-500">5</span>s</h2>
+                    <p class="text-gray-400 text-sm">Your download is preparing...</p>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="absolute bottom-0 left-0 h-1 bg-brand-600 transition-all duration-100 ease-linear" id="adProgressBar" style="width: 100%"></div>
+            </div>
+
+            <div class="mt-8 text-center">
+                <p id="adStatusText" class="text-white font-bold animate-bounce">Loading Ad...</p>
+            </div>
+        </div>
+    </div>
+    <!-- 🔥 END AD PLAYER 🔥 -->
 
     <!-- 🔥 SIDE MENU (DRAWER) -->
     <div id="sideMenu" class="fixed inset-0 z-[110] hidden">
@@ -599,5 +627,86 @@
         }
     </script>
     <script src="script.js"></script>
+
+    <!-- 🔥 AD PLAYER SCRIPT (ADDED AT BOTTOM TO WORK WITH SCRIPT.JS) 🔥 -->
+    <script>
+        let adTimerInterval;
+        let pendingDownloadUrl = "";
+        let pendingFileName = "";
+
+        // 1. THIS FUNCTION IS CALLED BY script.js WHEN YOU CLICK DOWNLOAD
+        // onclick="openAdPlayer('https://link-to-image.png', 'my-image.png')"
+        function openAdPlayer(url, name) {
+            pendingDownloadUrl = url;
+            pendingFileName = name || 'download';
+            
+            const overlay = document.getElementById('adPlayerOverlay');
+            const countdown = document.getElementById('adCountdown');
+            const status = document.getElementById('adStatusText');
+            const progress = document.getElementById('adProgressBar');
+            const closeBtn = document.getElementById('closeAdBtn');
+
+            // Reset UI
+            overlay.classList.remove('hidden');
+            closeBtn.classList.add('hidden');
+            status.innerText = "Ad is playing... Please wait.";
+            status.className = "text-white font-bold animate-pulse";
+            progress.style.width = "100%";
+            
+            let timeLeft = 5; // 5 Seconds Ad
+            countdown.innerText = timeLeft;
+
+            // Start Timer
+            adTimerInterval = setInterval(() => {
+                timeLeft--;
+                countdown.innerText = timeLeft;
+                
+                // Update Progress Bar
+                const percentage = (timeLeft / 5) * 100;
+                progress.style.width = percentage + "%";
+
+                if (timeLeft <= 0) {
+                    clearInterval(adTimerInterval);
+                    finishAd();
+                }
+            }, 1000);
+        }
+
+        // 2. AD FINISHED -> START DOWNLOAD
+        function finishAd() {
+            const status = document.getElementById('adStatusText');
+            const closeBtn = document.getElementById('closeAdBtn');
+            const countdown = document.getElementById('adCountdown');
+
+            countdown.innerText = "0";
+            status.innerText = "Download Started! ✅";
+            status.className = "text-green-400 font-bold";
+            closeBtn.classList.remove('hidden');
+
+            // Trigger the download
+            triggerDownload(pendingDownloadUrl, pendingFileName);
+
+            // Auto Close after 2 seconds
+            setTimeout(() => {
+                closeAdPlayer();
+            }, 2500);
+        }
+
+        // 3. HELPER TO FORCE DOWNLOAD
+        function triggerDownload(url, name) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = name;
+            a.target = "_blank"; // Force new tab for download
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        function closeAdPlayer() {
+            document.getElementById('adPlayerOverlay').classList.add('hidden');
+            if(adTimerInterval) clearInterval(adTimerInterval);
+        }
+    </script>
 </body>
 </html>
