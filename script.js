@@ -1,6 +1,6 @@
 
 // --- 1. TAILWIND CONFIGURATION ---
-// localStorage.clear(); // Commented out to keep you logged in during testing
+// localStorage.clear(); 
 tailwind.config = {
     theme: {
         extend: {
@@ -38,6 +38,7 @@ let myFollowingIds = new Set();
 let watchedAds = new Set(); 
 let storeAdUrl = null; 
 let currentStoreCategory = 'all'; 
+let pendingDownload = { id: null, url: null };
 
 // 🔥 BANNER AD STATE
 let bannerConfig = { code: null, isGlobal: false };
@@ -358,7 +359,7 @@ window.showScreen = (id) => {
     checkBannerVisibility(id);
 };
 
-// --- 7. FEED & VIDEO LOGIC (UPDATED FOR INSTAGRAM STYLE FOLLOW) ---
+// --- 7. FEED & VIDEO LOGIC ---
 async function loadVideos() {
     const { data: videos } = await sb.from('videos').select('*').order('created_at', { ascending: false });
     const container = document.getElementById('reelContainer');
@@ -371,7 +372,7 @@ async function loadVideos() {
             const safeUser = data.user || "User";
             const hasAd = data.ad_url && data.ad_url.length > 5 && data.ad_url !== 'null';
             
-            // 🔥 FOLLOW BUTTON LOGIC
+            // FOLLOW BUTTON LOGIC
             const isMe = currentUser && data.uid === currentUser.id;
             const isFollowing = myFollowingIds.has(data.uid);
             
@@ -411,7 +412,7 @@ async function loadVideos() {
 
                     <div class="absolute inset-0 flex flex-col justify-end p-4 pointer-events-none z-10 pb-[70px]">
                         
-                        <!-- 🔥 NEW: INSTAGRAM STYLE HEADER ROW (PFP + NAME + FOLLOW) -->
+                        <!-- INSTAGRAM STYLE HEADER ROW (PFP + NAME + FOLLOW) -->
                         <div class="reel-header-row pointer-events-auto mb-2">
                             <div class="reel-pfp-container" onclick="openPublicProfile('${data.uid}', '${safeUser}')">
                                 <div class="w-full h-full rounded-full bg-black flex items-center justify-center font-bold text-sm text-white border-2 border-black">
@@ -439,7 +440,6 @@ async function loadVideos() {
     } else { container.innerHTML = "<p class='text-center pt-20 text-gray-500'>No videos yet</p>"; }
 }
 
-// 🔥 NEW: Handle Follow Action from Feed
 window.followUserFromFeed = async (targetUid, btnId) => {
     if (!currentUser) return alert("Please login to follow.");
     const btn = document.getElementById(btnId);
@@ -955,17 +955,17 @@ async function loadAssets(category = 'all') {
     grid.innerHTML = html;
 }
 
-let pendingDownload = { id: null, url: null };
-
-// 🔥 UPDATED: DOWNLOAD LOGIC WITH BLOB (Fixes Not Downloading)
+// 🔥 FIXED: SAFER AD & DOWNLOAD HANDLER
 window.handleAssetDownload = async (assetId, url, price, upi, qr) => {
     pendingDownload = { id: assetId, url: url };
     
+    // 1. Paid Check
     if (price > 0) {
         openPaymentModal(upi, qr);
         return;
     }
 
+    // 2. Ad Check (Safely checks if URL exists)
     if (storeAdUrl && storeAdUrl !== 'null' && storeAdUrl.length > 5) {
         const modal = document.getElementById('storeAdModal');
         const frame = document.getElementById('storeAdFrame');
@@ -979,7 +979,7 @@ window.handleAssetDownload = async (assetId, url, price, upi, qr) => {
         skipBtn.classList.add('hidden');
         timerSpan.innerText = "10";
 
-        const isVideo = storeAdUrl.endsWith('.mp4');
+        const isVideo = storeAdUrl.toLowerCase().endsWith('.mp4');
         if (isVideo) {
             vid.src = storeAdUrl;
             vid.classList.remove('hidden');
@@ -1003,6 +1003,7 @@ window.handleAssetDownload = async (assetId, url, price, upi, qr) => {
             }
         }, 1000);
     } else {
+        // No Ad Configured -> Direct Download
         triggerRealDownload(assetId, url);
     }
 };
@@ -1054,35 +1055,29 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
-// 🔥 UPDATED: FETCH -> BLOB -> DOWNLOAD (To bypass CORS/Direct Open)
+// 🔥 FIXED: DIRECT DOWNLOAD METHOD (Fixes CORS/Security Block)
 async function triggerRealDownload(assetId, url) {
-    try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Network response was not ok');
-        
-        const blob = await response.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
-        
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        // Try to guess extension from blob type, default to png
-        const ext = blob.type.split('/')[1] || 'png';
-        link.download = `asset_${assetId}.${ext}`; 
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(blobUrl);
+    console.log("Starting download for:", url);
 
-        // Update DB
+    // Force Open in New Tab (Browser handles download)
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = "_blank"; // Important: Open in new tab/window
+    link.download = `asset_${assetId}`; 
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Update Stats in Background
+    try {
         const { data } = await sb.from('assets').select('downloads').eq('id', assetId).single();
         const current = data ? (data.downloads || 0) : 0;
         await sb.from('assets').update({ downloads: current + 1 }).eq('id', assetId);
         
-        loadAssets(currentStoreCategory);
+        // Refresh UI slightly later
+        setTimeout(() => loadAssets(currentStoreCategory), 1500);
     } catch (e) {
-        console.error("Blob download failed, falling back to window.open", e);
-        window.open(url, '_blank');
+        console.error("Stats update failed:", e);
     }
 }
 
@@ -1162,7 +1157,7 @@ window.openStats = async () => {
         html = "<p class='text-gray-500 text-center py-10'>No uploads yet.</p>";
     }
     
-    // 🔥 ADDED CASH OUT BUTTON HERE
+    // CASH OUT BUTTON HERE
     html += `
     <div class="mt-6 border-t border-gray-700 pt-4">
         <button onclick="openCashoutModal()" class="w-full bg-green-500 hover:bg-green-600 text-black font-bold py-3 rounded-lg shadow-lg transform transition active:scale-95">
@@ -1185,7 +1180,7 @@ window.openStats = async () => {
     `;
 };
 
-// 🔥 ADMIN PANEL
+// ADMIN PANEL
 window.openAdminPanel = async () => {
     document.getElementById('adminPanelModal').classList.remove('hidden');
     
@@ -1379,7 +1374,6 @@ async function loadProfileAssets() {
     grid.innerHTML = html;
 }
 
-// 🔥 FIX: PERMANENT PROFILE NAME SAVE
 window.saveProfileName = async () => {
     const nameInput = document.getElementById('editNameInput');
     const newName = nameInput.value.trim();
