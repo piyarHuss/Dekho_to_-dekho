@@ -53,6 +53,13 @@ async function forceStartApp(user) {
     log("Starting App for: " + user.email);
     currentUser = user;
     
+    // 🔥 TELEGRAM INITIALIZATION (VERY IMPORTANT)
+    if (window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+        console.log("Telegram WebApp Initialized");
+    }
+
     // Inject Modals
     injectStoreAdModal();
     injectPaymentModal();
@@ -1051,7 +1058,7 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
-// 🔥 FINAL WORKING FIX: PRIORITY DOWNLOAD 🔥
+// 🔥 FINAL WORKING FIX: PRIORITY DOWNLOAD (UPDATED) 🔥
 async function triggerRealDownload(assetId, url) {
     console.log("Starting download for:", assetId);
 
@@ -1064,37 +1071,32 @@ async function triggerRealDownload(assetId, url) {
     }
 
     // 2. URL BANAO (Force Download)
-    // Check karo agar URL me pehle se '?' hai ya nahi
     const separator = url.includes('?') ? '&' : '?';
-    // 'download=' parameter lagane se browser usse save karne ki koshish karta hai
-    const finalDownloadUrl = `${url}${separator}download=CreatorVerse_Asset_${assetId}`;
+    // 'download' param add karne se Supabase force download karta hai (agar bucket setting sahi hai)
+    // EncodeURI use kar rahe hain taaki special characters issue na karein
+    const finalDownloadUrl = encodeURI(`${url}${separator}download=CreatorVerse_Asset_${assetId}.png`);
 
-    // 3. ACTION: Link Open Karo (Sabse Pehle)
+    // 3. ACTION: Link Open Karo
+    let opened = false;
     try {
         if (window.Telegram && window.Telegram.WebApp) {
-            // Telegram ko bolo: "Bahar Chrome mein kholo"
+            // Option A: Telegram Special Command
             window.Telegram.WebApp.openLink(finalDownloadUrl, { try_instant_view: false });
-        } else {
-            // PC/Testing ke liye fallback
-            const link = document.createElement('a');
-            link.href = finalDownloadUrl;
-            link.target = '_blank';
-            link.download = `Asset_${assetId}`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-    } catch (err) {
-        console.error("Link open error:", err);
-        alert("Download Link Error. Pls try again.");
+            opened = true;
+        } 
+    } catch (e) {
+        console.log("Telegram openLink failed, trying fallback", e);
     }
 
-    // 4. DATABASE UPDATE (Background mein chalne do)
-    // Agar ye fail bhi hua, toh user ka download start ho chuka hoga
+    // Option B: Fallback (Standard Window Open) agar Telegram fail hua ya nahi hai
+    if (!opened) {
+        window.open(finalDownloadUrl, '_blank');
+    }
+
+    // 4. DATABASE UPDATE (Background)
     try {
         const { error } = await sb.rpc('increment_asset_downloads', { row_id: assetId });
         if (!error) {
-            // UI Update
             const storeEl = document.getElementById(`store_dl_${assetId}`);
             if(storeEl) storeEl.innerText = (parseInt(storeEl.innerText) || 0) + 1;
             
