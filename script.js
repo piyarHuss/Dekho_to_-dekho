@@ -1421,9 +1421,3 @@ window.saveProfileName = async () => {
         saveBtn.disabled = false;
     }
 };
-```
-210.5s
-info
-Google AI models may make mistakes, so double-check outputs.
-Use Arrow Up and Arrow Down to select a turn, Enter to jump to it, and Escape to return to the chat.
-Start typing a prompt
