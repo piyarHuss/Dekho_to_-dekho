@@ -1,4 +1,3 @@
-
 // --- 1. TAILWIND CONFIGURATION ---
 // localStorage.clear(); 
 tailwind.config = {
@@ -251,11 +250,10 @@ function injectStoreAdModal() {
         </div>
         <div class="absolute bottom-10 right-5 z-50 flex flex-col items-end pointer-events-none">
             <div id="storeAdTimerBox" class="bg-gray-900/80 text-white border border-gray-600 px-6 py-3 rounded-full backdrop-blur-md mb-2 font-bold pointer-events-auto">
-                Download in <span id="storeAdTimer" class="text-brand-500">10</span>s
+                Downloading in <span id="storeAdTimer" class="text-brand-500">10</span>s
             </div>
-            <button id="storeAdSkipBtn" onclick="skipStoreAdAndDownload()" class="hidden bg-green-500 text-white font-bold px-6 py-3 rounded-full hover:bg-green-600 transition shadow-xl transform scale-105 pointer-events-auto border-2 border-white">
-                Download Now <i class="fas fa-download ml-2"></i>
-            </button>
+            <!-- Skip button hidden, auto download implemented -->
+            <button id="storeAdSkipBtn" class="hidden"></button>
         </div>
     </div>`;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
@@ -942,7 +940,7 @@ async function loadAssets(category = 'all') {
                         <h4 class="font-bold text-sm truncate text-white">${data.desc || ''}</h4>
                         <div class="flex justify-between items-center text-xs text-gray-400 mb-2">
                             <span>@${data.user}</span>
-                            <span><i class="fas fa-download text-brand-500"></i> ${data.downloads || 0}</span>
+                            <span><i class="fas fa-download text-brand-500"></i> <span id="store_dl_${data.id}">${data.downloads || 0}</span></span>
                         </div>
                         <button onclick="handleAssetDownload('${data.id}', '${data.url}', ${data.price}, '${data.upi_id || ''}', '${data.qr_code_url || ''}')" 
                             class="block text-center w-full py-2 rounded ${data.price > 0 ? 'bg-yellow-500 hover:bg-yellow-400 text-black' : 'bg-gray-700 hover:bg-white hover:text-black text-white'} text-xs font-bold transition">
@@ -996,9 +994,9 @@ window.handleAssetDownload = async (assetId, url, price, upi, qr) => {
             if (timeLeft > 0) {
                 timerSpan.innerText = timeLeft;
             } else {
+                // 🔥 AUTO DOWNLOAD LOGIC HERE 🔥
                 clearInterval(interval);
-                timerBox.classList.add('hidden');
-                skipBtn.classList.remove('hidden'); 
+                skipStoreAdAndDownload(); // Auto-trigger download when timer hits 0
             }
         }, 1000);
     } else {
@@ -1053,62 +1051,55 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
-// 🔥 UNIVERSAL DOWNLOAD FUNCTION (Fix for CORS & Telegram) 🔥
+// 🔥 UNIVERSAL DIRECT DOWNLOAD & INSTANT UI UPDATE (FIXED WITH RPC) 🔥
 async function triggerRealDownload(assetId, url) {
-    console.log("Starting download for:", url);
-    
-    // UI Feedback
+    console.log("Starting download logic for ID:", assetId);
+
+    // UI Feedback (Button Spinner)
     const btn = document.querySelector(`button[onclick*='${assetId}']`);
     let originalText = "";
     if(btn) {
         originalText = btn.innerHTML;
-        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Saving...";
+        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Processing...";
     }
 
+    // --- STEP 1: UPDATE DATABASE SECURELY VIA RPC ---
     try {
-        // Step 1: Try fetching blob (clean download)
-        const response = await fetch(url, { mode: 'cors' });
-        if (!response.ok) throw new Error("Network/CORS error");
+        // Calling Supabase RPC function to bypass RLS
+        const { error } = await sb.rpc('increment_asset_downloads', { row_id: assetId });
         
-        const blob = await response.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
+        if (error) {
+            console.error("RPC Error (Make sure you ran the SQL script):", error);
+        } else {
+            // Success: Update UI Instantly
+            const storeEl = document.getElementById(`store_dl_${assetId}`);
+            if(storeEl) storeEl.innerText = (parseInt(storeEl.innerText) || 0) + 1;
+
+            const profileEl = document.getElementById(`profile_dl_${assetId}`);
+            if(profileEl) profileEl.innerText = (parseInt(profileEl.innerText) || 0) + 1;
+            
+            console.log("Count incremented successfully via RPC");
+        }
+    } catch (e) {
+        console.error("Download Count Update Failed:", e);
+    }
+
+    // --- STEP 2: TRIGGER BROWSER DOWNLOAD ---
+    try {
+        const downloadUrl = url.includes('?') ? `${url}&download=` : `${url}?download=`;
         const link = document.createElement('a');
-        link.href = blobUrl;
-        
-        // Extact name
-        const ext = url.split('.').pop().split('?')[0] || 'png'; 
-        link.download = `CreatorVerse_${assetId}.${ext}`;
-        
+        link.href = downloadUrl;
+        link.download = `CreatorVerse_${assetId}`; 
+        link.target = '_blank';
         document.body.appendChild(link);
         link.click();
-        
-        setTimeout(() => {
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(blobUrl);
-        }, 100);
-
+        document.body.removeChild(link);
     } catch (error) {
-        console.warn("Blob download failed (likely CORS). Using fallback...", error);
-        
-        // Step 2: Fallback to System Browser (Critical for Telegram)
-        if (window.Telegram && window.Telegram.WebApp) {
-            // This forces external browser which can handle downloads
-            window.Telegram.WebApp.openLink(url, { try_instant_view: false });
-        } else {
-            // For standard browsers, open in new tab
-            window.open(url, '_blank');
-        }
+        console.warn("Download trigger failed", error);
+        window.open(url, '_blank');
     } finally {
         if(btn) btn.innerHTML = originalText || "<i class='fas fa-download mr-1'></i> Download";
     }
-
-    // Update Stats
-    try {
-        const { data } = await sb.from('assets').select('downloads').eq('id', assetId).single();
-        const current = data ? (data.downloads || 0) : 0;
-        await sb.from('assets').update({ downloads: current + 1 }).eq('id', assetId);
-        setTimeout(() => loadAssets(currentStoreCategory), 1500);
-    } catch (e) { console.error("Stats error", e); }
 }
 
 // --- 11. PROFILE, STATS & ADMIN LOGIC ---
@@ -1389,13 +1380,14 @@ async function loadProfileAssets() {
     let html = '';
     if(assets && assets.length > 0) { 
         assets.forEach(data => { 
+            // 🔥 ADDED ID to allow instant updates
             html += `
             <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-800">
                 <div class="aspect-square">
                     <img src="${data.url}" class="w-full h-full object-cover">
                 </div>
                 <div class="p-2 text-center text-xs font-bold bg-gray-900 text-gray-400">
-                        <i class="fas fa-download text-brand-500 mr-1"></i> ${data.downloads || 0} Downloads
+                        <i class="fas fa-download text-brand-500 mr-1"></i> <span id="profile_dl_${data.id}">${data.downloads || 0}</span> Downloads
                 </div>
             </div>`; 
         }); 
