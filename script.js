@@ -1,3 +1,4 @@
+
 // --- 1. TAILWIND CONFIGURATION ---
 // localStorage.clear(); 
 tailwind.config = {
@@ -53,15 +54,6 @@ async function forceStartApp(user) {
     log("Starting App for: " + user.email);
     currentUser = user;
     
-    // 🔥 TELEGRAM INITIALIZATION (VERY IMPORTANT)
-    if (window.Telegram && window.Telegram.WebApp) {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-        // Ensure header color matches app
-        window.Telegram.WebApp.setHeaderColor('#000000'); 
-        console.log("Telegram WebApp Initialized");
-    }
-
     // Inject Modals
     injectStoreAdModal();
     injectPaymentModal();
@@ -1060,83 +1052,54 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
-// 🔥 FINAL WORKING FIX: PRIORITY DOWNLOAD (UPDATED FOR TELEGRAM) 🔥
+// 🔥 UNIVERSAL DIRECT DOWNLOAD & INSTANT UI UPDATE 🔥
 async function triggerRealDownload(assetId, url) {
-    console.log("Starting download for:", assetId);
+    console.log("Starting download logic for ID:", assetId);
 
-    // 1. UI: Button ko 'Processing' dikhao
+    // UI Feedback
     const btn = document.querySelector(`button[onclick*='${assetId}']`);
     let originalText = "";
-    if (btn) {
+    if(btn) {
         originalText = btn.innerHTML;
-        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Saving...";
-        btn.disabled = true; // Prevent double click
+        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Processing...";
     }
 
+    // --- STEP 1: TRIGGER BROWSER DOWNLOAD (IMMEDIATELY) ---
     try {
-        // --- METHOD 1: FETCH & BLOB (Best for Telegram Mini App) ---
-        // Ye method image ko background me fetch karta hai aur browser ko force karta hai save karne ke liye
-        
-        const response = await fetch(url);
-        if (!response.ok) throw new Error("Download failed");
-        
-        const blob = await response.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
-        
-        // Ek temporary hidden link banate hain
+        const downloadUrl = url.includes('?') ? `${url}&download=` : `${url}?download=`;
         const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = `CreatorVerse_Asset_${assetId}.png`; // Filename set karein
+        link.href = downloadUrl;
+        link.download = `CreatorVerse_${assetId}`; 
+        link.target = '_blank';
         document.body.appendChild(link);
-        
-        // Link click simulate karein
         link.click();
-        
-        // Cleanup
         document.body.removeChild(link);
-        window.URL.revokeObjectURL(blobUrl);
-        
-        console.log("Download triggered via Blob");
-
-    } catch (e) {
-        console.log("Blob method failed, switching to Fallback:", e);
-
-        // --- METHOD 2: FALLBACK (Telegram External Link) ---
-        // Agar Method 1 fail hota hai (CORS issue ki wajah se), to External Browser me open karein
-        const separator = url.includes('?') ? '&' : '?';
-        const finalDownloadUrl = encodeURI(`${url}${separator}download=CreatorVerse_Asset_${assetId}.png`);
-
-        if (window.Telegram && window.Telegram.WebApp) {
-            // 'try_instant_view: false' ensure karta hai ki ye download mode me open ho
-            window.Telegram.WebApp.openLink(finalDownloadUrl, { try_instant_view: false });
-        } else {
-            window.open(finalDownloadUrl, '_blank');
-        }
+    } catch (error) {
+        console.warn("Download trigger failed", error);
+        window.open(url, '_blank');
     }
 
-    // 4. DATABASE UPDATE (Background Stats)
+    // --- STEP 2: UPDATE UI INSTANTLY (OPTIMISTIC) ---
+    // Update Store Screen
+    const storeEl = document.getElementById(`store_dl_${assetId}`);
+    if(storeEl) storeEl.innerText = parseInt(storeEl.innerText || 0) + 1;
+
+    // Update Profile Screen
+    const profileEl = document.getElementById(`profile_dl_${assetId}`);
+    if(profileEl) profileEl.innerText = parseInt(profileEl.innerText || 0) + 1;
+
+    if(btn) btn.innerHTML = originalText || "<i class='fas fa-download mr-1'></i> Download";
+
+    // --- STEP 3: DATABASE UPDATE (BACKGROUND) ---
+    // We do NOT wait for this to finish before downloading
     try {
-        // Agar RPC function nahi hai to direct table update bhi try kar sakte hain
-        const { error } = await sb.rpc('increment_asset_downloads', { row_id: assetId });
-        
-        // Agar RPC fail ho ya na ho, UI update karein
-        if (!error || error) {
-            const storeEl = document.getElementById(`store_dl_${assetId}`);
-            if (storeEl) storeEl.innerText = (parseInt(storeEl.innerText) || 0) + 1;
-
-            const profileEl = document.getElementById(`profile_dl_${assetId}`);
-            if (profileEl) profileEl.innerText = (parseInt(profileEl.innerText) || 0) + 1;
+        const { data } = await sb.from('assets').select('downloads').eq('id', assetId).single();
+        if (data) {
+            await sb.from('assets').update({ downloads: (data.downloads || 0) + 1 }).eq('id', assetId);
+            console.log("Background DB update successful");
         }
     } catch (e) {
-        console.log("Count update failed (Ignored):", e);
-    }
-
-    // 5. Button Reset
-    if (btn) {
-        setTimeout(() => {
-            btn.innerHTML = originalText || "<i class='fas fa-download mr-1'></i> Download";
-            btn.disabled = false;
-        }, 2000);
+        console.error("Background DB Update Failed:", e);
     }
 }
 
