@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CreatorVerse Pro - Ultimate</title>
     
+    <!-- 🔥 TELEGRAM WEB APP SDK (VERY IMPORTANT) 🔥 -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -39,21 +42,71 @@
         .heart-bounce { animation: bounce 0.5s; }
         @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.3); } }
 
-        /* Reel / Feed Styles */
-        .reel-header-row { display: flex; align-items: center; margin-bottom: 8px; }
-        .reel-pfp-container { width: 38px; height: 38px; border-radius: 50%; padding: 2px; background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); margin-right: 10px; flex-shrink: 0; }
-        .reel-pfp-image { width: 100%; height: 100%; border-radius: 50%; border: 2px solid black; object-fit: cover; display: block; }
-        .reel-username-text { font-weight: 700; font-size: 14px; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5); margin-right: 12px; }
-        .reel-follow-btn { background: rgba(0, 0, 0, 0.2); border: 1.5px solid rgba(255, 255, 255, 0.9); border-radius: 8px; padding: 4px 14px; color: white; font-size: 12px; font-weight: 600; cursor: pointer; backdrop-filter: blur(2px); transition: all 0.2s ease; white-space: nowrap; }
-        .reel-follow-btn:active { transform: scale(0.95); background: rgba(255, 255, 255, 0.2); }
-        .reel-follow-btn.following { display: none; }
+        /* 🔥 INSTAGRAM STYLE VIDEO OVERLAY STYLES 🔥 */
+        
+        .reel-header-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px; 
+        }
+
+        .reel-pfp-container {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            padding: 2px; 
+            background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); 
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        
+        .reel-pfp-image {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid black; 
+            object-fit: cover;
+            display: block;
+        }
+
+        .reel-username-text {
+            font-weight: 700;
+            font-size: 14px;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            margin-right: 12px; 
+        }
+
+        .reel-follow-btn {
+            background: rgba(0, 0, 0, 0.2); 
+            border: 1.5px solid rgba(255, 255, 255, 0.9); 
+            border-radius: 8px; 
+            padding: 4px 14px;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            backdrop-filter: blur(2px);
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .reel-follow-btn:active {
+            transform: scale(0.95);
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .reel-follow-btn.following {
+            display: none; 
+        }
+
     </style>
 </head>
 <body class="bg-black text-white antialiased">
 
     <!-- 0️⃣ AUTH SCREEN -->
     <div id="authScreen" class="fixed inset-0 z-[90] bg-black flex flex-col justify-center items-center p-6 w-full h-full">
-        <div class="w-full max-sm fade-in bg-gray-900 p-8 rounded-2xl border border-gray-800 shadow-2xl">
+        <div class="w-full max-sm fade-in bg-dark-900 p-8 rounded-2xl border border-gray-800 shadow-2xl">
             <div class="text-center mb-8">
                 <h1 class="text-3xl font-black text-white mb-2 tracking-tighter">Creator<span class="text-brand-500">Verse</span></h1>
                 <p class="text-gray-400 text-sm">Login to continue</p>
@@ -62,7 +115,7 @@
             <div id="loginForm" class="space-y-4">
                 <input type="email" id="loginEmail" placeholder="Email" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none">
                 <input type="password" id="loginPass" placeholder="Password" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none">
-                <button onclick="handleAuth('login')" id="loginBtn" class="w-full bg-gradient-to-r from-blue-600 to-blue-500 py-3 rounded-lg font-bold text-white shadow-lg mt-2 hover:opacity-90">Log In</button>
+                <button onclick="handleAuth('login')" id="loginBtn" class="w-full bg-gradient-to-r from-brand-500 to-brand-600 py-3 rounded-lg font-bold text-white shadow-lg mt-2 hover:opacity-90">Log In</button>
                 <p class="text-center text-xs text-gray-400 mt-4">Don't have an account? <span onclick="toggleAuth('register')" class="text-brand-600 font-bold cursor-pointer">Sign Up</span></p>
             </div>
             <div id="registerForm" class="space-y-4 hidden">
@@ -76,8 +129,7 @@
         </div>
     </div>
 
-    <!-- 🔥 FAKE AD PLAYER OVERLAY (NEW FEATURE) 🔥 -->
-    <!-- This is the screen that appears when you click Download -->
+    <!-- 🔥 FAKE AD PLAYER OVERLAY (NEW FEATURE - ADDED HERE) 🔥 -->
     <div id="adPlayerOverlay" class="fixed inset-0 z-[200] bg-black hidden flex flex-col items-center justify-center">
         <!-- Close Button (Hidden initially) -->
         <button id="closeAdBtn" onclick="closeAdPlayer()" class="absolute top-6 right-6 z-[210] hidden bg-gray-800/80 text-white rounded-full p-2 px-4 text-sm font-bold border border-gray-600">
@@ -90,17 +142,17 @@
             <!-- Ad Box -->
             <div class="w-full h-80 bg-gray-900 rounded-2xl border border-gray-800 relative overflow-hidden flex flex-col items-center justify-center shadow-2xl">
                 <!-- Glowing Background -->
-                <div class="absolute inset-0 bg-gradient-to-br from-blue-900/20 to-purple-900/20 animate-pulse"></div>
+                <div class="absolute inset-0 bg-gradient-to-br from-brand-900/20 to-purple-900/20 animate-pulse"></div>
                 
                 <!-- Countdown -->
                 <div class="relative z-10 text-center">
                     <i class="fas fa-play-circle text-5xl text-gray-700 mb-4"></i>
-                    <h2 class="text-4xl font-black text-white mb-2">WAIT <span id="adCountdown" class="text-blue-500">5</span>s</h2>
+                    <h2 class="text-4xl font-black text-white mb-2">WAIT <span id="adCountdown" class="text-brand-500">5</span>s</h2>
                     <p class="text-gray-400 text-sm">Your download is preparing...</p>
                 </div>
 
                 <!-- Progress Bar -->
-                <div class="absolute bottom-0 left-0 h-1 bg-blue-600 transition-all duration-100 ease-linear" id="adProgressBar" style="width: 100%"></div>
+                <div class="absolute bottom-0 left-0 h-1 bg-brand-600 transition-all duration-100 ease-linear" id="adProgressBar" style="width: 100%"></div>
             </div>
 
             <div class="mt-8 text-center">
@@ -126,19 +178,25 @@
                         <div class="text-[10px] text-gray-400">Earnings & Stats</div>
                     </div>
                 </button>
+                
                 <div class="h-px bg-gray-800 my-2"></div>
+                
                 <button onclick="openEditProfile()" class="w-full flex items-center p-3 rounded-lg hover:bg-gray-800 transition text-left group border border-transparent hover:border-gray-700">
                     <div class="w-10 h-10 rounded-full bg-purple-900/30 flex items-center justify-center text-purple-400 mr-3 group-hover:scale-110 transition"><i class="fas fa-pen text-lg"></i></div>
                     <div>
                         <div class="font-bold text-sm text-white">Edit Profile</div>
+                        <div class="text-[10px] text-gray-400">Change display name</div>
                     </div>
                 </button>
+
                 <button onclick="openWithdrawal()" class="w-full flex items-center p-3 rounded-lg hover:bg-gray-800 transition text-left group border border-transparent hover:border-gray-700">
                     <div class="w-10 h-10 rounded-full bg-yellow-900/30 flex items-center justify-center text-yellow-500 mr-3 group-hover:scale-110 transition"><i class="fas fa-coins text-lg"></i></div>
                     <div>
                         <div class="font-bold text-sm text-white">Withdrawal</div>
+                        <div class="text-[10px] text-yellow-500/80">Cashout Earnings</div>
                     </div>
                 </button>
+
             </div>
             <div class="p-4 border-t border-gray-800 bg-black/20">
                 <button onclick="handleLogout()" class="w-full flex items-center justify-center p-3 rounded-lg bg-red-900/20 text-red-500 font-bold hover:bg-red-600 hover:text-white transition shadow-lg border border-red-900/30">
@@ -150,12 +208,13 @@
 
     <!-- 🔥 EDIT PROFILE MODAL 🔥 -->
     <div id="editProfileModal" class="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-6">
-        <div class="bg-gray-900 w-full max-w-sm rounded-xl border border-gray-700 p-6 shadow-2xl animate-slide-up">
+        <div class="bg-dark-900 w-full max-w-sm rounded-xl border border-gray-700 p-6 shadow-2xl animate-slide-up">
             <h3 class="text-xl font-bold mb-4">Edit Profile</h3>
-            <input type="text" id="editNameInput" class="w-full bg-black border border-gray-600 rounded-lg p-3 text-white outline-none mb-4" placeholder="New Name">
+            <p class="text-gray-400 text-xs mb-2">Enter your new display name</p>
+            <input type="text" id="editNameInput" class="w-full bg-black border border-gray-600 rounded-lg p-3 text-white focus:border-brand-500 outline-none mb-4" placeholder="New Name">
             <div class="flex space-x-3">
-                <button onclick="closeEditProfile()" class="flex-1 py-3 rounded-lg font-bold text-gray-400 hover:bg-gray-800 transition">Cancel</button>
-                <button onclick="saveProfileName()" class="flex-1 bg-blue-600 py-3 rounded-lg font-bold text-white hover:bg-blue-500 transition">Save</button>
+                <button onclick="closeEditProfile()" class="flex-1 py-3 rounded-lg font-bold text-gray-400 hover:text-white hover:bg-gray-800 transition">Cancel</button>
+                <button onclick="saveProfileName()" class="flex-1 bg-brand-600 py-3 rounded-lg font-bold text-white shadow-lg hover:bg-brand-500 transition">Save</button>
             </div>
         </div>
     </div>
@@ -166,10 +225,11 @@
             <h2 class="font-black text-lg flex items-center"><i class="fas fa-wallet text-brand-500 mr-2"></i> Payments</h2>
             <button onclick="document.getElementById('cashoutModal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-gray-400 hover:text-white transition"><i class="fas fa-times"></i></button>
         </div>
+
         <div class="p-4 pb-24 max-w-2xl mx-auto space-y-6">
             <!-- Balance Card -->
             <div class="bg-gradient-to-br from-gray-900 to-black border border-gray-700 rounded-2xl p-6 shadow-xl relative overflow-hidden">
-                <div class="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 rounded-full blur-3xl"></div>
+                <div class="absolute top-0 right-0 w-32 h-32 bg-brand-600/10 rounded-full blur-3xl"></div>
                 <div class="relative z-10">
                     <p class="text-gray-400 text-xs font-bold uppercase tracking-widest mb-1">Available Balance</p>
                     <h1 class="text-4xl font-black text-white mb-2">$<span id="withdrawalBalanceDisplay">0.00</span></h1>
@@ -178,37 +238,50 @@
                     </div>
                 </div>
             </div>
+
+            <div class="bg-blue-900/20 border border-blue-800/50 p-4 rounded-xl flex items-start gap-3">
+                <i class="fas fa-info-circle text-blue-400 mt-1"></i>
+                <div>
+                    <h4 class="text-blue-400 font-bold text-sm">Withdrawal Limit</h4>
+                    <p class="text-gray-400 text-xs mt-1">Minimum withdrawal is <span class="text-white font-bold">$10.00</span>.</p>
+                </div>
+            </div>
+
             <!-- Withdrawal Form -->
             <div class="bg-gray-900/50 border border-gray-800 rounded-2xl p-5">
                 <h3 class="font-bold text-white mb-4">Request Payout</h3>
                 <div class="space-y-4">
                     <div>
                         <label class="block text-xs font-bold text-gray-500 mb-2 uppercase">Payment Method</label>
-                        <select id="cashoutMethod" onchange="toggleCashoutFields()" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-white outline-none">
+                        <select id="cashoutMethod" onchange="toggleCashoutFields()" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none appearance-none cursor-pointer">
                             <option value="upi">UPI (India)</option>
                             <option value="paypal">PayPal (International)</option>
                         </select>
                     </div>
+                    
                     <div id="fieldUpi">
                         <label class="block text-xs font-bold text-gray-500 mb-2 uppercase">UPI ID</label>
-                        <input type="text" id="cashoutUpi" placeholder="e.g. name@upi" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-white outline-none">
+                        <input type="text" id="cashoutUpi" placeholder="e.g. name@upi" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none">
                     </div>
+
                     <div id="fieldPaypal" class="hidden">
                         <label class="block text-xs font-bold text-gray-500 mb-2 uppercase">PayPal Email</label>
-                        <input type="email" id="cashoutPaypal" placeholder="email@paypal.com" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-white outline-none">
+                        <input type="email" id="cashoutPaypal" placeholder="email@paypal.com" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none">
                     </div>
+
                     <div>
                         <label class="block text-xs font-bold text-gray-500 mb-2 uppercase">Amount ($)</label>
                         <div class="relative">
                             <span class="absolute left-4 top-3 text-gray-500 font-bold">$</span>
-                            <input type="number" id="cashoutAmount" placeholder="0.00" class="w-full bg-black border border-gray-700 rounded-lg p-3 pl-8 text-white outline-none">
+                            <input type="number" id="cashoutAmount" placeholder="0.00" class="w-full bg-black border border-gray-700 rounded-lg p-3 pl-8 text-white focus:border-brand-500 outline-none">
                         </div>
                     </div>
-                    <button onclick="submitCashout()" class="w-full bg-blue-600 hover:bg-blue-500 py-3.5 rounded-lg font-bold text-white shadow-lg transition active:scale-95 flex items-center justify-center">
+                    <button onclick="submitCashout()" class="w-full bg-brand-600 hover:bg-brand-500 py-3.5 rounded-lg font-bold text-white shadow-lg transition active:scale-95 flex items-center justify-center">
                         Confirm Withdrawal <i class="fas fa-arrow-right ml-2"></i>
                     </button>
                 </div>
             </div>
+
             <!-- History Table -->
             <div>
                 <h3 class="font-bold text-white mb-3 text-sm px-1">Recent Transactions</h3>
@@ -243,6 +316,7 @@
                     <span class="text-white border-b-2 border-white pb-1 cursor-pointer">For You</span>
                 </div>
             </div>
+            <!-- Videos are injected here by JS -->
             <div class="reel-container" id="reelContainer">
                 <div class="flex h-full items-center justify-center text-gray-500"><p class="animate-pulse">Loading Feed...</p></div>
             </div>
@@ -251,24 +325,24 @@
         <!-- COMMENT MODAL -->
         <div id="commentModal" class="fixed inset-0 z-[60] hidden">
             <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeComments()"></div>
-            <div class="absolute bottom-0 w-full h-[60vh] bg-gray-900 rounded-t-2xl flex flex-col transition-transform duration-300 border-t border-gray-700 animate-slide-up">
-                <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900 rounded-t-2xl">
+            <div class="absolute bottom-0 w-full h-[60vh] bg-dark-900 rounded-t-2xl flex flex-col transition-transform duration-300 border-t border-gray-700 animate-slide-up">
+                <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-dark-900 rounded-t-2xl">
                     <div class="w-6"></div><span class="font-bold text-sm" id="commentCountHeader">Comments</span><button onclick="closeComments()" class="w-6 text-right"><i class="fas fa-times text-gray-400"></i></button>
                 </div>
                 <div id="commentsList" class="flex-1 overflow-y-auto p-4 space-y-4"></div>
                 <div class="p-3 border-t border-gray-800 flex items-center bg-black pb-8">
-                    <input type="text" id="commentInput" placeholder="Add a comment..." class="flex-1 bg-gray-800 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-white">
-                    <button onclick="postComment()" class="ml-3 text-blue-500 font-bold text-sm">Post</button>
+                    <input type="text" id="commentInput" placeholder="Add a comment..." class="flex-1 bg-gray-800 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 text-white">
+                    <button onclick="postComment()" class="ml-3 text-brand-500 font-bold text-sm">Post</button>
                 </div>
             </div>
         </div>
 
         <!-- 2️⃣ STORE SCREEN -->
-        <div id="storeScreen" class="screen hidden absolute inset-0 bg-gray-900 z-20 overflow-y-auto pb-20">
-            <div class="sticky top-0 bg-gray-900/95 backdrop-blur z-30 border-b border-gray-800">
+        <div id="storeScreen" class="screen hidden absolute inset-0 bg-dark-900 z-20 overflow-y-auto pb-20">
+            <div class="sticky top-0 bg-dark-900/95 backdrop-blur z-30 border-b border-gray-800">
                 <div class="flex justify-between items-center p-4">
                     <h2 class="font-bold text-xl">Asset Store 🎨</h2>
-                    <div class="bg-gray-800 px-3 py-1 rounded-full text-xs font-bold text-blue-600">Downloads</div>
+                    <div class="bg-gray-800 px-3 py-1 rounded-full text-xs font-bold text-brand-600">Downloads</div>
                 </div>
                 
                 <div class="flex overflow-x-auto px-4 pb-3 space-x-2 hide-scrollbar">
@@ -279,7 +353,6 @@
                 </div>
             </div>
 
-            <!-- ASSETS GRID (Where download buttons are) -->
             <div class="grid grid-cols-2 gap-3 p-4 pt-4" id="storeGrid"></div>
         </div>
 
@@ -289,7 +362,7 @@
                 <h2 class="font-bold text-lg mb-3">Inbox & Search</h2>
                 <div class="relative">
                     <i class="fas fa-search absolute left-3 top-3 text-gray-500"></i>
-                    <input type="text" id="userSearchInput" oninput="searchUsers(this.value)" placeholder="Search users by name..." class="w-full bg-gray-900 border border-gray-700 rounded-full py-2.5 pl-10 pr-4 text-sm text-white focus:border-blue-500 outline-none focus:ring-1 focus:ring-blue-500 transition">
+                    <input type="text" id="userSearchInput" oninput="searchUsers(this.value)" placeholder="Search users by name..." class="w-full bg-gray-900 border border-gray-700 rounded-full py-2.5 pl-10 pr-4 text-sm text-white focus:border-brand-500 outline-none focus:ring-1 focus:ring-brand-500 transition">
                 </div>
             </div>
             <div class="p-4">
@@ -306,7 +379,7 @@
 
         <!-- CHAT MODAL -->
         <div id="chatModal" class="fixed inset-0 z-[80] bg-black hidden flex flex-col">
-            <div class="p-4 border-b border-gray-800 flex items-center bg-gray-900/90 backdrop-blur">
+            <div class="p-4 border-b border-gray-800 flex items-center bg-dark-900/90 backdrop-blur">
                 <button onclick="closeChat()" class="mr-4 text-gray-300"><i class="fas fa-arrow-left text-xl"></i></button>
                 <div class="flex items-center">
                     <div class="w-8 h-8 rounded-full bg-gray-700 mr-3 overflow-hidden border border-gray-600">
@@ -317,9 +390,9 @@
                 </div>
             </div>
             <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-3 bg-black pb-20"></div>
-            <div class="p-3 border-t border-gray-800 bg-gray-900 flex items-center pb-6 absolute bottom-0 w-full">
-                <input type="text" id="messageInput" placeholder="Message..." class="flex-1 bg-gray-800 rounded-full px-4 py-2.5 text-sm focus:outline-none text-white focus:ring-1 focus:ring-blue-500">
-                <button onclick="sendMessage()" class="ml-3 text-blue-500 font-bold p-2 hover:bg-gray-800 rounded-full transition"><i class="fas fa-paper-plane text-lg"></i></button>
+            <div class="p-3 border-t border-gray-800 bg-dark-900 flex items-center pb-6 absolute bottom-0 w-full">
+                <input type="text" id="messageInput" placeholder="Message..." class="flex-1 bg-gray-800 rounded-full px-4 py-2.5 text-sm focus:outline-none text-white focus:ring-1 focus:ring-brand-500">
+                <button onclick="sendMessage()" class="ml-3 text-brand-500 font-bold p-2 hover:bg-gray-800 rounded-full transition"><i class="fas fa-paper-plane text-lg"></i></button>
             </div>
         </div>
 
@@ -338,11 +411,11 @@
                 </div>
                 <h2 class="text-lg font-black mt-3" id="publicProfileName">@User</h2>
                 <div class="flex space-x-3 mt-5">
-                    <button id="publicFollowBtn" class="bg-blue-500 text-black px-6 py-2 rounded-md font-bold text-sm shadow-lg hover:opacity-90 transition">Follow</button>
+                    <button id="publicFollowBtn" class="bg-brand-500 text-black px-6 py-2 rounded-md font-bold text-sm shadow-lg hover:opacity-90 transition">Follow</button>
                     <button id="publicMsgBtn" class="bg-gray-800 border border-gray-600 px-6 py-2 rounded-md font-bold text-sm hover:bg-gray-700 transition">Message</button>
                 </div>
             </div>
-            <div class="flex justify-around items-center border-y border-gray-800 py-4 mt-4 bg-gray-900/50">
+            <div class="flex justify-around items-center border-y border-gray-800 py-4 mt-4 bg-dark-900/50">
                 <div class="text-center"><div class="font-black text-lg" id="publicFollowing">0</div><div class="text-xs text-gray-400 font-bold uppercase">Following</div></div>
                 <div class="text-center"><div class="font-black text-lg" id="publicFollowers">0</div><div class="text-xs text-gray-400 font-bold uppercase">Followers</div></div>
                 <div class="text-center"><div class="font-black text-lg" id="publicLikes">0</div><div class="text-xs text-gray-400 font-bold uppercase">Likes</div></div>
@@ -360,7 +433,7 @@
             <div class="flex flex-col items-center pt-6 pb-2">
                 <input type="file" id="profilePicInput" accept="image/*" class="hidden" onchange="uploadProfilePic(this)">
                 <div class="relative cursor-pointer" onclick="document.getElementById('profilePicInput').click()">
-                    <div class="w-24 h-24 rounded-full border-4 border-black bg-gradient-to-tr from-blue-500 to-purple-600 p-1">
+                    <div class="w-24 h-24 rounded-full border-4 border-black bg-gradient-to-tr from-brand-500 to-purple-600 p-1">
                         <div class="w-full h-full rounded-full bg-gray-800 flex items-center justify-center text-3xl font-bold text-white overflow-hidden" id="profileAvatarContainer">
                             <span id="profileAvatarText">U</span>
                             <img id="profileAvatarImg" src="" class="w-full h-full object-cover hidden">
@@ -369,16 +442,16 @@
                 </div>
                 <h2 class="text-lg font-black mt-3" id="profileName">@User</h2>
                 <div class="flex space-x-2 mt-4">
-                    <button onclick="openStats()" class="bg-gradient-to-r from-blue-600 to-blue-500 px-8 py-2 rounded-md font-bold text-sm shadow-lg text-black">Statistics 📈</button>
+                    <button onclick="openStats()" class="bg-gradient-to-r from-brand-600 to-brand-500 px-8 py-2 rounded-md font-bold text-sm shadow-lg text-black">Statistics 📈</button>
                 </div>
             </div>
-            <div class="flex justify-around items-center border-y border-gray-800 py-4 mt-4 bg-gray-900/50">
+            <div class="flex justify-around items-center border-y border-gray-800 py-4 mt-4 bg-dark-900/50">
                 <div class="text-center cursor-pointer"><div class="font-black text-lg" id="statFollowing">0</div><div class="text-xs text-gray-400 font-bold uppercase tracking-wide">Following</div></div>
                 <div class="text-center cursor-pointer"><div class="font-black text-lg" id="statFollowers">0</div><div class="text-xs text-gray-400 font-bold uppercase tracking-wide">Followers</div></div>
                 <div class="text-center cursor-pointer"><div class="font-black text-lg" id="statLikes">0</div><div class="text-xs text-gray-400 font-bold uppercase tracking-wide">Likes</div></div>
             </div>
             <div class="flex mt-2 sticky top-14 bg-black z-20">
-                <button id="profileTabVideo" onclick="switchProfileTab('video')" class="flex-1 py-3 border-b-2 border-blue-500 text-white font-bold transition flex justify-center items-center"><i class="fas fa-th mr-2"></i> Videos</button>
+                <button id="profileTabVideo" onclick="switchProfileTab('video')" class="flex-1 py-3 border-b-2 border-brand-500 text-white font-bold transition flex justify-center items-center"><i class="fas fa-th mr-2"></i> Videos</button>
                 <button id="profileTabAsset" onclick="switchProfileTab('asset')" class="flex-1 py-3 text-gray-500 font-bold transition flex justify-center items-center"><i class="fas fa-store mr-2"></i> Assets</button>
             </div>
             <div id="profileGrid" class="grid grid-cols-3 gap-0.5 pb-20 bg-black"></div>
@@ -406,7 +479,7 @@
                          <span class="text-2xl font-black text-white">$0.00</span>
                      </div>
                  </div>
-                 <div class="text-3xl text-blue-600 opacity-80 bg-blue-900/20 p-3 rounded-full"><i class="fas fa-wallet"></i></div>
+                 <div class="text-3xl text-brand-600 opacity-80 bg-brand-900/20 p-3 rounded-full"><i class="fas fa-wallet"></i></div>
             </div>
 
             <div class="grid grid-cols-3 gap-3 mb-6">
@@ -433,7 +506,7 @@
         </div>
 
         <!-- 🔥 UPDATED ADMIN PANEL 🔥 -->
-        <div id="adminPanelModal" class="fixed inset-0 z-[80] bg-gray-900 hidden flex flex-col p-4">
+        <div id="adminPanelModal" class="fixed inset-0 z-[80] bg-dark-900 hidden flex flex-col p-4">
             <div class="flex justify-between items-center mb-6 border-b border-gray-800 pb-4">
                 <h2 class="text-xl font-bold text-red-500"><i class="fas fa-shield-alt"></i> Monetization Panel</h2>
                 <button onclick="document.getElementById('adminPanelModal').classList.add('hidden')"><i class="fas fa-times text-2xl"></i></button>
@@ -446,28 +519,28 @@
 
         <!-- UPLOAD STUDIO -->
         <div id="uploadModal" class="fixed inset-0 z-[60] bg-black/95 backdrop-blur hidden flex flex-col items-center justify-center p-4">
-            <div class="w-full max-w-lg bg-gray-800 rounded-xl border border-gray-700 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="w-full max-w-lg bg-dark-800 rounded-xl border border-gray-700 overflow-hidden flex flex-col max-h-[90vh]">
                 <div class="p-4 border-b border-gray-700 flex justify-between items-center">
                     <h3 class="font-bold text-lg">Creator Studio</h3>
                     <button onclick="toggleUpload()" class="text-gray-400"><i class="fas fa-times text-xl"></i></button>
                 </div>
-                <div class="flex bg-gray-900 p-1 m-4 rounded-lg">
+                <div class="flex bg-dark-900 p-1 m-4 rounded-lg">
                     <button id="tabVideo" onclick="switchUploadTab('video')" class="flex-1 py-2 text-sm font-bold bg-gray-700 rounded text-white shadow">Post Video</button>
                     <button id="tabAsset" onclick="switchUploadTab('asset')" class="flex-1 py-2 text-sm font-bold text-gray-400 hover:text-white">Sell Asset</button>
                 </div>
                 <div class="flex-1 overflow-y-auto p-4 custom-scrollbar">
                     <div id="uploadProgressContainer" class="hidden mb-4 p-3 bg-gray-800 rounded-lg">
-                        <p class="text-xs font-bold text-blue-500 mb-1" id="uploadStatusText">Uploading...</p>
-                        <div class="w-full bg-gray-700 rounded-full h-2"><div id="progressBar" class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div></div>
+                        <p class="text-xs font-bold text-brand-500 mb-1" id="uploadStatusText">Uploading...</p>
+                        <div class="w-full bg-gray-700 rounded-full h-2"><div id="progressBar" class="bg-brand-500 h-2 rounded-full" style="width: 0%"></div></div>
                     </div>
                     <div id="videoUploadForm" class="space-y-4">
                         <div class="border-2 border-dashed border-gray-600 rounded-lg h-56 bg-gray-800 flex flex-col items-center justify-center relative overflow-hidden group">
                             <input type="file" id="videoFileInput" accept="video/*" class="absolute inset-0 opacity-0 cursor-pointer z-10" onchange="previewVideo(this)">
                             <video id="videoPreview" class="absolute inset-0 w-full h-full object-cover hidden" playsinline muted></video>
-                            <div id="videoPlaceholder" class="text-center pointer-events-none"><i class="fas fa-cloud-upload-alt text-4xl text-blue-500 mb-2"></i><p class="text-sm text-gray-300 font-bold">Select Video</p></div>
+                            <div id="videoPlaceholder" class="text-center pointer-events-none"><i class="fas fa-cloud-upload-alt text-4xl text-brand-500 mb-2"></i><p class="text-sm text-gray-300 font-bold">Select Video</p></div>
                         </div>
-                        <textarea id="videoCaption" rows="2" placeholder="Write something cool..." class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm mt-1 focus:outline-none focus:border-blue-500 transition"></textarea>
-                        <button onclick="uploadFile('video')" id="vidUploadBtn" class="w-full bg-gradient-to-r from-blue-500 to-blue-600 py-3 rounded-lg font-bold text-white shadow-lg">Post Video</button>
+                        <textarea id="videoCaption" rows="2" placeholder="Write something cool..." class="w-full bg-dark-900 border border-gray-700 rounded-lg p-3 text-sm mt-1 focus:outline-none focus:border-brand-500 transition"></textarea>
+                        <button onclick="uploadFile('video')" id="vidUploadBtn" class="w-full bg-gradient-to-r from-brand-500 to-brand-600 py-3 rounded-lg font-bold text-white shadow-lg">Post Video</button>
                     </div>
                     
                     <div id="assetUploadForm" class="space-y-4 hidden">
@@ -476,20 +549,20 @@
                             <img id="assetPreview" class="absolute inset-0 w-full h-full object-contain hidden p-2">
                             <div id="assetPlaceholder" class="text-center"><i class="fas fa-image text-3xl text-gray-500 mb-2"></i><p class="text-sm text-gray-400">Upload PNG/JPG</p></div>
                         </div>
-                        <input id="assetName" type="text" placeholder="Asset Name" class="w-full bg-gray-900 border border-gray-700 rounded p-3 text-sm mt-1">
-                        <select id="assetCategory" class="w-full bg-gray-900 border border-gray-700 rounded p-3 text-sm mt-1 text-gray-300 focus:text-white">
+                        <input id="assetName" type="text" placeholder="Asset Name" class="w-full bg-dark-900 border border-gray-700 rounded p-3 text-sm mt-1">
+                        <select id="assetCategory" class="w-full bg-dark-900 border border-gray-700 rounded p-3 text-sm mt-1 text-gray-300 focus:text-white">
                             <option value="emoji">Emoji</option>
                             <option value="thumbnail">Thumbnail</option>
                             <option value="sticker">Sticker</option>
                         </select>
-                        <div class="flex items-center justify-between bg-gray-900 p-3 rounded border border-gray-700">
+                        <div class="flex items-center justify-between bg-dark-900 p-3 rounded border border-gray-700">
                             <span class="text-sm">Paid?</span>
                             <label class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" id="paidToggle" class="sr-only peer" onchange="togglePriceInput()">
-                                <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-blue-500 transition-all"></div>
+                                <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-brand-500 transition-all"></div>
                             </label>
                         </div>
-                        <div id="priceInputContainer" class="hidden"><input id="assetPrice" type="number" placeholder="Price (₹)" class="w-full bg-gray-900 border border-gray-700 rounded p-3 text-sm mt-1"></div>
+                        <div id="priceInputContainer" class="hidden"><input id="assetPrice" type="number" placeholder="Price (₹)" class="w-full bg-dark-900 border border-gray-700 rounded p-3 text-sm mt-1"></div>
                         <button onclick="uploadFile('asset')" id="assetUploadBtn" class="w-full bg-blue-600 py-3 rounded font-bold text-white shadow-lg">Upload Asset</button>
                     </div>
                 </div>
@@ -501,8 +574,8 @@
             <button class="nav-btn text-white flex flex-col items-center" onclick="showScreen('feedScreen')"><i class="fas fa-home text-xl mb-1"></i> Home</button>
             <button class="nav-btn text-gray-500 flex flex-col items-center" onclick="showScreen('storeScreen')"><i class="fas fa-store text-xl mb-1"></i> Store</button>
             <button onclick="toggleUpload()" class="relative w-12 h-8">
-                <div class="absolute inset-0 bg-blue-600 rounded-lg transform -translate-x-1"></div>
-                <div class="absolute inset-0 bg-blue-500 rounded-lg transform translate-x-1"></div>
+                <div class="absolute inset-0 bg-brand-600 rounded-lg transform -translate-x-1"></div>
+                <div class="absolute inset-0 bg-brand-500 rounded-lg transform translate-x-1"></div>
                 <div class="absolute inset-0 bg-white rounded-lg flex items-center justify-center"><i class="fas fa-plus text-black font-bold text-sm"></i></div>
             </button>
             <button class="nav-btn text-gray-500 flex flex-col items-center relative" onclick="showScreen('inboxScreen')">
@@ -556,19 +629,16 @@
              document.getElementById('cashoutModal').classList.remove('hidden');
         }
     </script>
-
-    <!-- YOUR MAIN SCRIPT FILE -->
     <script src="script.js"></script>
 
-    <!-- 🔥 AD & DOWNLOAD LOGIC 🔥 -->
-    <!-- Place this AFTER script.js so it works properly -->
+    <!-- 🔥 AD PLAYER SCRIPT (UPDATED FOR TELEGRAM) 🔥 -->
     <script>
         let adTimerInterval;
         let pendingDownloadUrl = "";
         let pendingFileName = "";
 
-        // 1. CALL THIS FUNCTION WHEN CLICKING DOWNLOAD BUTTON
-        // Example: onclick="openAdPlayer('https://link-to-image.png', 'my-image.png')"
+        // 1. THIS FUNCTION IS CALLED BY script.js WHEN YOU CLICK DOWNLOAD
+        // onclick="openAdPlayer('https://link-to-image.png', 'my-image.png')"
         function openAdPlayer(url, name) {
             pendingDownloadUrl = url;
             pendingFileName = name || 'download';
@@ -625,14 +695,20 @@
             }, 2500);
         }
 
-        // 3. HELPER TO FORCE DOWNLOAD
+        // 3. HELPER TO FORCE DOWNLOAD (UPDATED FOR TELEGRAM)
         function triggerDownload(url, name) {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = name;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            if (window.Telegram && window.Telegram.WebApp) {
+                // Telegram WebApp external link opener
+                window.Telegram.WebApp.openLink(url, { try_instant_view: false });
+            } else {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = name;
+                a.target = "_blank"; // Force new tab for download
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
         }
 
         function closeAdPlayer() {
@@ -640,6 +716,5 @@
             if(adTimerInterval) clearInterval(adTimerInterval);
         }
     </script>
-
 </body>
 </html>
