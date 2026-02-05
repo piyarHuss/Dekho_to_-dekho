@@ -1051,11 +1051,11 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
-// 🔥 FINAL FIX: FORCE EXTERNAL BROWSER DOWNLOAD 🔥
+// 🔥 FINAL WORKING FIX: PRIORITY DOWNLOAD 🔥
 async function triggerRealDownload(assetId, url) {
-    console.log("Starting download logic for ID:", assetId);
+    console.log("Starting download for:", assetId);
 
-    // UI Feedback
+    // 1. UI: Button ko 'Processing' dikhao
     const btn = document.querySelector(`button[onclick*='${assetId}']`);
     let originalText = "";
     if(btn) {
@@ -1063,37 +1063,53 @@ async function triggerRealDownload(assetId, url) {
         btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Opening...";
     }
 
-    // 1. Update Count in Database
+    // 2. URL BANAO (Force Download)
+    // Check karo agar URL me pehle se '?' hai ya nahi
+    const separator = url.includes('?') ? '&' : '?';
+    // 'download=' parameter lagane se browser usse save karne ki koshish karta hai
+    const finalDownloadUrl = `${url}${separator}download=CreatorVerse_Asset_${assetId}`;
+
+    // 3. ACTION: Link Open Karo (Sabse Pehle)
+    try {
+        if (window.Telegram && window.Telegram.WebApp) {
+            // Telegram ko bolo: "Bahar Chrome mein kholo"
+            window.Telegram.WebApp.openLink(finalDownloadUrl, { try_instant_view: false });
+        } else {
+            // PC/Testing ke liye fallback
+            const link = document.createElement('a');
+            link.href = finalDownloadUrl;
+            link.target = '_blank';
+            link.download = `Asset_${assetId}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    } catch (err) {
+        console.error("Link open error:", err);
+        alert("Download Link Error. Pls try again.");
+    }
+
+    // 4. DATABASE UPDATE (Background mein chalne do)
+    // Agar ye fail bhi hua, toh user ka download start ho chuka hoga
     try {
         const { error } = await sb.rpc('increment_asset_downloads', { row_id: assetId });
         if (!error) {
+            // UI Update
             const storeEl = document.getElementById(`store_dl_${assetId}`);
             if(storeEl) storeEl.innerText = (parseInt(storeEl.innerText) || 0) + 1;
+            
             const profileEl = document.getElementById(`profile_dl_${assetId}`);
             if(profileEl) profileEl.innerText = (parseInt(profileEl.innerText) || 0) + 1;
         }
     } catch (e) {
-        console.error("Count Update Failed:", e);
+        console.log("Count update failed (Ignored):", e);
     }
 
-    // 2. Prepare Secure Download Link
-    // Supabase URL ke peeche "?download=" lagane se browser usse save karne par majboor ho jata hai
-    const downloadUrl = url.includes('?') ? `${url}&download=` : `${url}?download=`;
-
-    // 3. Force Open in External Browser (Chrome/Safari)
-    try {
-        if (window.Telegram && window.Telegram.WebApp) {
-            // Telegram ko bolenge: "Isse app me mat kholo, bahar Chrome me kholo"
-            window.Telegram.WebApp.openLink(downloadUrl, { try_instant_view: false });
-        } else {
-            // PC Testing ke liye fallback
-            window.open(downloadUrl, '_blank');
-        }
-    } catch (err) {
-        console.error("External open failed", err);
-        alert("Download Link: " + downloadUrl); // Emergency fallback
-    } finally {
-        if(btn) btn.innerHTML = originalText || "<i class='fas fa-download mr-1'></i> Download";
+    // 5. Button Reset
+    if(btn) {
+        setTimeout(() => {
+            btn.innerHTML = originalText || "<i class='fas fa-download mr-1'></i> Download";
+        }, 3000);
     }
 }
 
