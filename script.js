@@ -57,6 +57,8 @@ async function forceStartApp(user) {
     if (window.Telegram && window.Telegram.WebApp) {
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
+        // Ensure header color matches app
+        window.Telegram.WebApp.setHeaderColor('#000000'); 
         console.log("Telegram WebApp Initialized");
     }
 
@@ -1058,60 +1060,83 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
-// 🔥 FINAL WORKING FIX: PRIORITY DOWNLOAD (UPDATED) 🔥
+// 🔥 FINAL WORKING FIX: PRIORITY DOWNLOAD (UPDATED FOR TELEGRAM) 🔥
 async function triggerRealDownload(assetId, url) {
     console.log("Starting download for:", assetId);
 
     // 1. UI: Button ko 'Processing' dikhao
     const btn = document.querySelector(`button[onclick*='${assetId}']`);
     let originalText = "";
-    if(btn) {
+    if (btn) {
         originalText = btn.innerHTML;
-        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Opening...";
+        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Saving...";
+        btn.disabled = true; // Prevent double click
     }
 
-    // 2. URL BANAO (Force Download)
-    const separator = url.includes('?') ? '&' : '?';
-    // 'download' param add karne se Supabase force download karta hai (agar bucket setting sahi hai)
-    // EncodeURI use kar rahe hain taaki special characters issue na karein
-    const finalDownloadUrl = encodeURI(`${url}${separator}download=CreatorVerse_Asset_${assetId}.png`);
-
-    // 3. ACTION: Link Open Karo
-    let opened = false;
     try {
-        if (window.Telegram && window.Telegram.WebApp) {
-            // Option A: Telegram Special Command
-            window.Telegram.WebApp.openLink(finalDownloadUrl, { try_instant_view: false });
-            opened = true;
-        } 
+        // --- METHOD 1: FETCH & BLOB (Best for Telegram Mini App) ---
+        // Ye method image ko background me fetch karta hai aur browser ko force karta hai save karne ke liye
+        
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Download failed");
+        
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        
+        // Ek temporary hidden link banate hain
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `CreatorVerse_Asset_${assetId}.png`; // Filename set karein
+        document.body.appendChild(link);
+        
+        // Link click simulate karein
+        link.click();
+        
+        // Cleanup
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+        
+        console.log("Download triggered via Blob");
+
     } catch (e) {
-        console.log("Telegram openLink failed, trying fallback", e);
+        console.log("Blob method failed, switching to Fallback:", e);
+
+        // --- METHOD 2: FALLBACK (Telegram External Link) ---
+        // Agar Method 1 fail hota hai (CORS issue ki wajah se), to External Browser me open karein
+        const separator = url.includes('?') ? '&' : '?';
+        const finalDownloadUrl = encodeURI(`${url}${separator}download=CreatorVerse_Asset_${assetId}.png`);
+
+        if (window.Telegram && window.Telegram.WebApp) {
+            // 'try_instant_view: false' ensure karta hai ki ye download mode me open ho
+            window.Telegram.WebApp.openLink(finalDownloadUrl, { try_instant_view: false });
+        } else {
+            window.open(finalDownloadUrl, '_blank');
+        }
     }
 
-    // Option B: Fallback (Standard Window Open) agar Telegram fail hua ya nahi hai
-    if (!opened) {
-        window.open(finalDownloadUrl, '_blank');
-    }
-
-    // 4. DATABASE UPDATE (Background)
+    // 4. DATABASE UPDATE (Background Stats)
     try {
+        // Agar RPC function nahi hai to direct table update bhi try kar sakte hain
         const { error } = await sb.rpc('increment_asset_downloads', { row_id: assetId });
-        if (!error) {
+        
+        // Agar RPC fail ho ya na ho, UI update karein
+        if (!error || error) {
             const storeEl = document.getElementById(`store_dl_${assetId}`);
-            if(storeEl) storeEl.innerText = (parseInt(storeEl.innerText) || 0) + 1;
-            
+            if (storeEl) storeEl.innerText = (parseInt(storeEl.innerText) || 0) + 1;
+
             const profileEl = document.getElementById(`profile_dl_${assetId}`);
-            if(profileEl) profileEl.innerText = (parseInt(profileEl.innerText) || 0) + 1;
+            if (profileEl) profileEl.innerText = (parseInt(profileEl.innerText) || 0) + 1;
         }
     } catch (e) {
         console.log("Count update failed (Ignored):", e);
     }
 
     // 5. Button Reset
-    if(btn) {
+    if (btn) {
         setTimeout(() => {
             btn.innerHTML = originalText || "<i class='fas fa-download mr-1'></i> Download";
-        }, 3000);
+            btn.disabled = false;
+        }, 2000);
     }
 }
 
