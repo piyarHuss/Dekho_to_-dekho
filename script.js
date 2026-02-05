@@ -1055,18 +1055,27 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
-// 🔥 FIXED: DIRECT DOWNLOAD METHOD (Fixes CORS/Security Block)
+// 🔥 FIXED: DIRECT DOWNLOAD METHOD (Includes Telegram WebApp Fix)
 async function triggerRealDownload(assetId, url) {
     console.log("Starting download for:", url);
 
-    // Force Open in New Tab (Browser handles download)
-    const link = document.createElement('a');
-    link.href = url;
-    link.target = "_blank"; // Important: Open in new tab/window
-    link.download = `asset_${assetId}`; 
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // --- TELEGRAM FIX START ---
+    if (window.Telegram && window.Telegram.WebApp) {
+        // Telegram WebApp detects click but blocks internal download
+        // We force it to open in System Browser (Chrome/Safari)
+        window.Telegram.WebApp.openLink(url, { try_instant_view: false });
+    } 
+    else {
+        // Standard Browser Behavior (Chrome/Desktop/Mobile Web)
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = "_blank"; // Force new tab
+        link.download = `asset_${assetId}`; 
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+    // --- TELEGRAM FIX END ---
 
     // Update Stats in Background
     try {
