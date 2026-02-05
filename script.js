@@ -1051,47 +1051,67 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
-// 🔥 FINAL FIX: FORCE EXTERNAL BROWSER DOWNLOAD 🔥
+// 🔥 UNIVERSAL DIRECT DOWNLOAD FOR TELEGRAM MINI APP (FIXED) 🔥
 async function triggerRealDownload(assetId, url) {
     console.log("Starting download logic for ID:", assetId);
 
-    // UI Feedback
+    // UI Feedback (Button Spinner)
     const btn = document.querySelector(`button[onclick*='${assetId}']`);
     let originalText = "";
     if(btn) {
         originalText = btn.innerHTML;
-        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Opening...";
+        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Downloading...";
     }
 
-    // 1. Update Count in Database
+    // --- STEP 1: UPDATE DATABASE (RPC) ---
     try {
         const { error } = await sb.rpc('increment_asset_downloads', { row_id: assetId });
+        
         if (!error) {
+            // Update UI Counters
             const storeEl = document.getElementById(`store_dl_${assetId}`);
             if(storeEl) storeEl.innerText = (parseInt(storeEl.innerText) || 0) + 1;
+
             const profileEl = document.getElementById(`profile_dl_${assetId}`);
             if(profileEl) profileEl.innerText = (parseInt(profileEl.innerText) || 0) + 1;
         }
     } catch (e) {
-        console.error("Count Update Failed:", e);
+        console.error("Download Count Update Failed:", e);
     }
 
-    // 2. Prepare Secure Download Link
-    // Supabase URL ke peeche "?download=" lagane se browser usse save karne par majboor ho jata hai
-    const downloadUrl = url.includes('?') ? `${url}&download=` : `${url}?download=`;
-
-    // 3. Force Open in External Browser (Chrome/Safari)
+    // --- STEP 2: TELEGRAM COMPATIBLE DOWNLOAD (BLOB METHOD) ---
     try {
+        // Fetch image data as Blob (Fixes Telegram WebView issues)
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        
+        // Determine file extension
+        let extension = 'png';
+        if (url.includes('.jpg') || url.includes('.jpeg')) extension = 'jpg';
+        else if (url.includes('.mp4')) extension = 'mp4';
+        
+        link.download = `CreatorVerse_${assetId}.${extension}`;
+        
+        document.body.appendChild(link);
+        link.click();
+        
+        // Clean up
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+
+    } catch (error) {
+        console.warn("Blob download failed, trying fallback...", error);
+        
+        // Fallback: Use Telegram's external browser opener if available
         if (window.Telegram && window.Telegram.WebApp) {
-            // Telegram ko bolenge: "Isse app me mat kholo, bahar Chrome me kholo"
-            window.Telegram.WebApp.openLink(downloadUrl, { try_instant_view: false });
+            window.Telegram.WebApp.openLink(url, { try_instant_view: false });
         } else {
-            // PC Testing ke liye fallback
-            window.open(downloadUrl, '_blank');
+            window.open(url, '_blank');
         }
-    } catch (err) {
-        console.error("External open failed", err);
-        alert("Download Link: " + downloadUrl); // Emergency fallback
     } finally {
         if(btn) btn.innerHTML = originalText || "<i class='fas fa-download mr-1'></i> Download";
     }
