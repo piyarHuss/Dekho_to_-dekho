@@ -1051,7 +1051,7 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
-// 🔥 UNIVERSAL DIRECT DOWNLOAD & INSTANT UI UPDATE (FIXED WITH RPC) 🔥
+// 🔥 UNIVERSAL DIRECT DOWNLOAD FOR TELEGRAM MINI APP (FIXED) 🔥
 async function triggerRealDownload(assetId, url) {
     console.log("Starting download logic for ID:", assetId);
 
@@ -1060,43 +1060,58 @@ async function triggerRealDownload(assetId, url) {
     let originalText = "";
     if(btn) {
         originalText = btn.innerHTML;
-        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Processing...";
+        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Downloading...";
     }
 
-    // --- STEP 1: UPDATE DATABASE SECURELY VIA RPC ---
+    // --- STEP 1: UPDATE DATABASE (RPC) ---
     try {
-        // Calling Supabase RPC function to bypass RLS
         const { error } = await sb.rpc('increment_asset_downloads', { row_id: assetId });
         
-        if (error) {
-            console.error("RPC Error (Make sure you ran the SQL script):", error);
-        } else {
-            // Success: Update UI Instantly
+        if (!error) {
+            // Update UI Counters
             const storeEl = document.getElementById(`store_dl_${assetId}`);
             if(storeEl) storeEl.innerText = (parseInt(storeEl.innerText) || 0) + 1;
 
             const profileEl = document.getElementById(`profile_dl_${assetId}`);
             if(profileEl) profileEl.innerText = (parseInt(profileEl.innerText) || 0) + 1;
-            
-            console.log("Count incremented successfully via RPC");
         }
     } catch (e) {
         console.error("Download Count Update Failed:", e);
     }
 
-    // --- STEP 2: TRIGGER BROWSER DOWNLOAD ---
+    // --- STEP 2: TELEGRAM COMPATIBLE DOWNLOAD (BLOB METHOD) ---
     try {
-        const downloadUrl = url.includes('?') ? `${url}&download=` : `${url}?download=`;
+        // Fetch image data as Blob (Fixes Telegram WebView issues)
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        
         const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = `CreatorVerse_${assetId}`; 
-        link.target = '_blank';
+        link.href = blobUrl;
+        
+        // Determine file extension
+        let extension = 'png';
+        if (url.includes('.jpg') || url.includes('.jpeg')) extension = 'jpg';
+        else if (url.includes('.mp4')) extension = 'mp4';
+        
+        link.download = `CreatorVerse_${assetId}.${extension}`;
+        
         document.body.appendChild(link);
         link.click();
+        
+        // Clean up
         document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+
     } catch (error) {
-        console.warn("Download trigger failed", error);
-        window.open(url, '_blank');
+        console.warn("Blob download failed, trying fallback...", error);
+        
+        // Fallback: Use Telegram's external browser opener if available
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.openLink(url, { try_instant_view: false });
+        } else {
+            window.open(url, '_blank');
+        }
     } finally {
         if(btn) btn.innerHTML = originalText || "<i class='fas fa-download mr-1'></i> Download";
     }
