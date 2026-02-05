@@ -955,7 +955,6 @@ async function loadAssets(category = 'all') {
     grid.innerHTML = html;
 }
 
-// 🔥 FIXED: SAFER AD & DOWNLOAD HANDLER
 window.handleAssetDownload = async (assetId, url, price, upi, qr) => {
     pendingDownload = { id: assetId, url: url };
     
@@ -965,7 +964,7 @@ window.handleAssetDownload = async (assetId, url, price, upi, qr) => {
         return;
     }
 
-    // 2. Ad Check (Safely checks if URL exists)
+    // 2. Ad Check
     if (storeAdUrl && storeAdUrl !== 'null' && storeAdUrl.length > 5) {
         const modal = document.getElementById('storeAdModal');
         const frame = document.getElementById('storeAdFrame');
@@ -1003,7 +1002,6 @@ window.handleAssetDownload = async (assetId, url, price, upi, qr) => {
             }
         }, 1000);
     } else {
-        // No Ad Configured -> Direct Download
         triggerRealDownload(assetId, url);
     }
 };
@@ -1055,39 +1053,62 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
-// 🔥 FIXED: DIRECT DOWNLOAD METHOD (Includes Telegram WebApp Fix)
+// 🔥 UNIVERSAL DOWNLOAD FUNCTION (Fix for CORS & Telegram) 🔥
 async function triggerRealDownload(assetId, url) {
     console.log("Starting download for:", url);
+    
+    // UI Feedback
+    const btn = document.querySelector(`button[onclick*='${assetId}']`);
+    let originalText = "";
+    if(btn) {
+        originalText = btn.innerHTML;
+        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Saving...";
+    }
 
-    // --- TELEGRAM FIX START ---
-    if (window.Telegram && window.Telegram.WebApp) {
-        // Telegram WebApp detects click but blocks internal download
-        // We force it to open in System Browser (Chrome/Safari)
-        window.Telegram.WebApp.openLink(url, { try_instant_view: false });
-    } 
-    else {
-        // Standard Browser Behavior (Chrome/Desktop/Mobile Web)
+    try {
+        // Step 1: Try fetching blob (clean download)
+        const response = await fetch(url, { mode: 'cors' });
+        if (!response.ok) throw new Error("Network/CORS error");
+        
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = url;
-        link.target = "_blank"; // Force new tab
-        link.download = `asset_${assetId}`; 
+        link.href = blobUrl;
+        
+        // Extact name
+        const ext = url.split('.').pop().split('?')[0] || 'png'; 
+        link.download = `CreatorVerse_${assetId}.${ext}`;
+        
         document.body.appendChild(link);
         link.click();
-        document.body.removeChild(link);
-    }
-    // --- TELEGRAM FIX END ---
+        
+        setTimeout(() => {
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+        }, 100);
 
-    // Update Stats in Background
+    } catch (error) {
+        console.warn("Blob download failed (likely CORS). Using fallback...", error);
+        
+        // Step 2: Fallback to System Browser (Critical for Telegram)
+        if (window.Telegram && window.Telegram.WebApp) {
+            // This forces external browser which can handle downloads
+            window.Telegram.WebApp.openLink(url, { try_instant_view: false });
+        } else {
+            // For standard browsers, open in new tab
+            window.open(url, '_blank');
+        }
+    } finally {
+        if(btn) btn.innerHTML = originalText || "<i class='fas fa-download mr-1'></i> Download";
+    }
+
+    // Update Stats
     try {
         const { data } = await sb.from('assets').select('downloads').eq('id', assetId).single();
         const current = data ? (data.downloads || 0) : 0;
         await sb.from('assets').update({ downloads: current + 1 }).eq('id', assetId);
-        
-        // Refresh UI slightly later
         setTimeout(() => loadAssets(currentStoreCategory), 1500);
-    } catch (e) {
-        console.error("Stats update failed:", e);
-    }
+    } catch (e) { console.error("Stats error", e); }
 }
 
 // --- 11. PROFILE, STATS & ADMIN LOGIC ---
