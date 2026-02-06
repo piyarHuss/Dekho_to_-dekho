@@ -40,13 +40,18 @@ let storeAdUrl = null;
 let currentStoreCategory = 'all'; 
 let pendingDownload = { id: null, url: null };
 
-// 🔥 BANNER AD STATE
-let bannerConfig = { code: null, isGlobal: false };
+// 🔥 NEW AD CONFIGURATION STATE
+let appAdConfig = {
+    feed: { top: '', bottom: '' },
+    store: { top: '', bottom: '' },
+    profile: { top: '', bottom: '' }
+};
 
 // 💰 EARNINGS RATES
 let appRates = {
-    videoView: 0.001, 
-    assetDownload: 0.02 
+    videoView: 0.001,       // Creator earns this when their video is viewed
+    assetDownload: 0.02,    // Creator earns this per download
+    watchReward: 0.0005     // 🔥 NEW: Viewer earns this per video watched
 };
 
 // --- 3. AUTHENTICATION LOGIC ---
@@ -54,10 +59,11 @@ async function forceStartApp(user) {
     log("Starting App for: " + user.email);
     currentUser = user;
     
-    // Inject Modals
+    // Inject Modals & Ad Containers
     injectStoreAdModal();
     injectPaymentModal();
     injectCashoutModal();
+    injectBannerContainers();
 
     // Fetch Global Config
     await fetchAppConfig();
@@ -84,60 +90,117 @@ async function forceStartApp(user) {
     loadVideos();
     loadAssets('all'); 
     
-    checkBannerVisibility('feedScreen');
+    // Initial Ad Render for Feed
+    renderPageAds('feedScreen');
 
     if(currentUser.email === "admin@gmail.com") document.getElementById('adminBtn').classList.remove('hidden');
 }
 
-// --- 4. APP CONFIG & BANNER ADS ---
+// --- 4. APP CONFIG & BANNER ADS MANAGEMENT ---
 
 async function fetchAppConfig() {
     try {
+        // 1. Fetch Store Ad & Rates
         const { data: storeData } = await sb.from('app_config').select('value').eq('key', 'store_ad_url').single();
         if (storeData && storeData.value && storeData.value.length > 5) storeAdUrl = storeData.value;
-
-        const { data: bannerCodeData } = await sb.from('app_config').select('value').eq('key', 'banner_ad_code').single();
-        if (bannerCodeData && bannerCodeData.value) bannerConfig.code = bannerCodeData.value;
-
-        const { data: bannerGlobalData } = await sb.from('app_config').select('value').eq('key', 'banner_global').single();
-        if (bannerGlobalData) bannerConfig.isGlobal = (bannerGlobalData.value === 'true');
 
         const { data: viewRate } = await sb.from('app_config').select('value').eq('key', 'rate_video_view').single();
         if (viewRate && viewRate.value) appRates.videoView = parseFloat(viewRate.value);
 
         const { data: dlRate } = await sb.from('app_config').select('value').eq('key', 'rate_asset_download').single();
         if (dlRate && dlRate.value) appRates.assetDownload = parseFloat(dlRate.value);
+        
+        // Fetch Watch Reward (if exists, else default)
+        const { data: watchRate } = await sb.from('app_config').select('value').eq('key', 'rate_watch_reward').single();
+        if (watchRate && watchRate.value) appRates.watchReward = parseFloat(watchRate.value);
 
-        initBannerAd();
+        // 2. Fetch Banner Ads
+        const keys = [
+            'ad_feed_top', 'ad_feed_bottom',
+            'ad_store_top', 'ad_store_bottom',
+            'ad_profile_top', 'ad_profile_bottom'
+        ];
+        
+        const { data: adsData } = await sb.from('app_config').select('key, value').in('key', keys);
+        
+        if (adsData) {
+            adsData.forEach(item => {
+                if (item.key === 'ad_feed_top') appAdConfig.feed.top = item.value;
+                if (item.key === 'ad_feed_bottom') appAdConfig.feed.bottom = item.value;
+                if (item.key === 'ad_store_top') appAdConfig.store.top = item.value;
+                if (item.key === 'ad_store_bottom') appAdConfig.store.bottom = item.value;
+                if (item.key === 'ad_profile_top') appAdConfig.profile.top = item.value;
+                if (item.key === 'ad_profile_bottom') appAdConfig.profile.bottom = item.value;
+            });
+        }
 
     } catch (e) { console.log("Config Fetch Error", e); }
 }
 
-function initBannerAd() {
-    const existing = document.getElementById('globalAppBanner');
-    if(existing) existing.remove();
-    if (!bannerConfig.code || bannerConfig.code.trim() === "") return;
+function injectBannerContainers() {
+    if(document.getElementById('appBannerTop')) return;
 
-    const div = document.createElement('div');
-    div.id = 'globalAppBanner';
-    div.className = 'fixed bottom-[60px] left-0 w-full z-[40] flex justify-center items-end pointer-events-none hidden';
+    // TOP BANNER
+    const topDiv = document.createElement('div');
+    topDiv.id = 'appBannerTop';
+    topDiv.className = 'fixed top-0 left-0 w-full z-[45] flex justify-center items-start pointer-events-none hidden pt-2';
+    topDiv.innerHTML = `
+        <div class="bg-transparent pointer-events-auto relative flex flex-col items-center">
+            <div class="relative">
+                <button onclick="document.getElementById('appBannerTop').classList.add('hidden')" 
+                    class="absolute -bottom-6 right-0 bg-gray-900 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] border border-gray-600 shadow-md z-50">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div id="bannerContentTop" class="min-w-[300px] min-h-[50px] flex justify-center items-center overflow-hidden bg-gray-800/80 backdrop-blur-sm rounded-md border border-gray-700 shadow-lg"></div>
+            </div>
+        </div>`;
+    document.body.appendChild(topDiv);
+
+    // BOTTOM BANNER
+    const botDiv = document.createElement('div');
+    botDiv.id = 'appBannerBottom';
+    botDiv.className = 'fixed bottom-[60px] left-0 w-full z-[40] flex justify-center items-end pointer-events-none hidden pb-2';
+    botDiv.innerHTML = `
+        <div class="bg-transparent pointer-events-auto relative flex flex-col items-center">
+            <div class="relative">
+                <button onclick="document.getElementById('appBannerBottom').classList.add('hidden')" 
+                    class="absolute -top-6 right-0 bg-gray-900 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] border border-gray-600 shadow-md z-50">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div id="bannerContentBottom" class="min-w-[300px] min-h-[50px] flex justify-center items-center overflow-hidden bg-gray-800/80 backdrop-blur-sm rounded-md border border-gray-700 shadow-lg"></div>
+            </div>
+        </div>`;
+    document.body.appendChild(botDiv);
+}
+
+function renderPageAds(screenId) {
+    const topContainer = document.getElementById('appBannerTop');
+    const botContainer = document.getElementById('appBannerBottom');
+    const topContent = document.getElementById('bannerContentTop');
+    const botContent = document.getElementById('bannerContentBottom');
+
+    topContainer.classList.add('hidden');
+    botContainer.classList.add('hidden');
+    topContent.innerHTML = '';
+    botContent.innerHTML = '';
+
+    if (screenId === 'authScreen' || screenId === 'cameraScreen') return;
+
+    let targetConfig = { top: null, bottom: null };
+
+    if (screenId === 'feedScreen') targetConfig = appAdConfig.feed;
+    else if (screenId === 'storeScreen') targetConfig = appAdConfig.store;
+    else if (screenId === 'profileScreen' || screenId === 'publicProfileScreen') targetConfig = appAdConfig.profile;
     
-    const wrapper = document.createElement('div');
-    wrapper.className = 'bg-transparent pointer-events-auto relative flex flex-col items-center';
-    
-    wrapper.innerHTML = `
-        <div class="relative">
-            <button onclick="document.getElementById('globalAppBanner').style.display='none'" 
-                class="absolute -top-6 right-0 bg-gray-900 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] border border-gray-600 shadow-md z-50">
-                <i class="fas fa-times"></i>
-            </button>
-            <div id="bannerContent" class="min-w-[300px] min-h-[50px] flex justify-center items-center overflow-hidden bg-gray-800/50 rounded-md"></div>
-        </div>
-    `;
-    div.appendChild(wrapper);
-    document.body.appendChild(div);
-    const contentDiv = wrapper.querySelector('#bannerContent');
-    setAndExecuteScript(contentDiv, bannerConfig.code);
+    if (targetConfig.top && targetConfig.top.trim() !== "") {
+        topContainer.classList.remove('hidden');
+        setAndExecuteScript(topContent, targetConfig.top);
+    }
+
+    if (targetConfig.bottom && targetConfig.bottom.trim() !== "") {
+        botContainer.classList.remove('hidden');
+        setAndExecuteScript(botContent, targetConfig.bottom);
+    }
 }
 
 function setAndExecuteScript(container, html) {
@@ -151,58 +214,10 @@ function setAndExecuteScript(container, html) {
     });
 }
 
-function checkBannerVisibility(screenId) {
-    const banner = document.getElementById('globalAppBanner');
-    if (!banner) return;
-    if (screenId === 'authScreen' || screenId === 'cameraScreen') {
-        banner.classList.add('hidden');
-        return;
-    }
-    if (bannerConfig.isGlobal) {
-        banner.classList.remove('hidden');
-    } else {
-        if (screenId === 'feedScreen') banner.classList.remove('hidden');
-        else banner.classList.add('hidden');
-    }
-}
-
 // --- 5. MODALS (STORE, PAYMENT & CASHOUT) ---
-
 function injectCashoutModal() {
-    if(document.getElementById('cashoutModal')) return;
-    const modalHtml = `
-    <div id="cashoutModal" class="fixed inset-0 z-[80] bg-black/95 hidden flex flex-col items-center justify-center p-6">
-        <div class="bg-gray-800 rounded-xl w-full max-w-sm p-6 border border-gray-700 relative">
-            <button onclick="document.getElementById('cashoutModal').classList.add('hidden')" class="absolute top-3 right-3 text-gray-400"><i class="fas fa-times"></i></button>
-            <h3 class="text-xl font-bold text-white mb-2 text-center">Withdraw Funds</h3>
-            <p class="text-xs text-gray-400 text-center mb-6">Minimum withdrawal: $10.00</p>
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-xs font-bold text-gray-400 mb-1">Select Method</label>
-                    <select id="cashoutMethod" onchange="toggleCashoutFields()" class="w-full bg-gray-900 text-white border border-gray-600 rounded p-3 focus:border-brand-500 outline-none">
-                        <option value="upi">UPI (India)</option>
-                        <option value="paypal">PayPal (International)</option>
-                    </select>
-                </div>
-                <div id="fieldUpi">
-                    <label class="block text-xs font-bold text-gray-400 mb-1">UPI ID</label>
-                    <input type="text" id="cashoutUpi" placeholder="example@upi" class="w-full bg-gray-900 text-white border border-gray-600 rounded p-3 outline-none">
-                </div>
-                <div id="fieldPaypal" class="hidden">
-                    <label class="block text-xs font-bold text-gray-400 mb-1">PayPal Email</label>
-                    <input type="email" id="cashoutPaypal" placeholder="email@paypal.com" class="w-full bg-gray-900 text-white border border-gray-600 rounded p-3 outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-400 mb-1">Amount ($)</label>
-                    <input type="number" id="cashoutAmount" placeholder="0.00" class="w-full bg-gray-900 text-white border border-gray-600 rounded p-3 outline-none">
-                </div>
-                <button onclick="submitCashout()" class="w-full bg-brand-500 hover:bg-brand-600 text-black font-bold py-3 rounded-lg mt-2 transition">
-                    Request Withdrawal <i class="fas fa-paper-plane ml-1"></i>
-                </button>
-            </div>
-        </div>
-    </div>`;
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    if(document.getElementById('cashoutModal')) return; 
+    // Already in HTML, handled by ID
 }
 
 window.toggleCashoutFields = () => {
@@ -216,27 +231,39 @@ window.toggleCashoutFields = () => {
     }
 };
 
-window.openCashoutModal = () => {
-    document.getElementById('cashoutModal').classList.remove('hidden');
-};
-
 window.submitCashout = async () => {
     const method = document.getElementById('cashoutMethod').value;
     const amount = parseFloat(document.getElementById('cashoutAmount').value);
-    let details = "";
+    
     if (amount < 10) return alert("Minimum withdrawal is $10");
     if (isNaN(amount)) return alert("Invalid amount");
-    if (method === 'upi') {
-        details = document.getElementById('cashoutUpi').value;
-        if (!details.includes('@')) return alert("Invalid UPI ID");
-    } else {
-        details = document.getElementById('cashoutPaypal').value;
-        if (!details.includes('@')) return alert("Invalid PayPal Email");
-    }
-    alert(`Withdrawal Request Sent!\n\nMethod: ${method.toUpperCase()}\nDetails: ${details}\nAmount: $${amount}`);
-    document.getElementById('cashoutModal').classList.add('hidden');
-};
+    
+    // Check balance
+    const { data } = await sb.from('users').select('balance').eq('uid', currentUser.id).single();
+    if (!data || data.balance < amount) return alert("Insufficient Balance!");
 
+    let details = method === 'upi' ? document.getElementById('cashoutUpi').value : document.getElementById('cashoutPaypal').value;
+    if (!details || details.length < 5) return alert("Invalid Payment Details");
+
+    try {
+        // Create withdrawal record
+        await sb.from('withdrawals').insert({
+            user_id: currentUser.id,
+            amount: amount,
+            method: method,
+            account: details,
+            status: 'Pending'
+        });
+
+        // Deduct balance
+        await sb.from('users').update({ balance: data.balance - amount }).eq('uid', currentUser.id);
+
+        alert(`Withdrawal Request Sent for $${amount}!`);
+        document.getElementById('cashoutModal').classList.add('hidden');
+    } catch(e) {
+        alert("Error: " + e.message);
+    }
+};
 
 function injectStoreAdModal() {
     if(document.getElementById('storeAdModal')) return;
@@ -253,7 +280,6 @@ function injectStoreAdModal() {
             <div id="storeAdTimerBox" class="bg-gray-900/80 text-white border border-gray-600 px-6 py-3 rounded-full backdrop-blur-md mb-2 font-bold pointer-events-auto">
                 Downloading in <span id="storeAdTimer" class="text-brand-500">10</span>s
             </div>
-            <!-- Skip button hidden, auto download implemented -->
             <button id="storeAdSkipBtn" class="hidden"></button>
         </div>
     </div>`;
@@ -287,7 +313,6 @@ function injectPaymentModal() {
 }
 
 // --- 6. STANDARD FUNCTIONS ---
-
 function startMessageListener() {
     if(!currentUser) return;
     sb.channel('public:messages')
@@ -355,7 +380,7 @@ window.showScreen = (id) => {
     if(id === 'inboxScreen') { document.getElementById('inboxBadge').classList.add('hidden'); loadInbox(); }
     if(id === 'profileScreen') { loadProfileVideos(currentUser.id, 'profileGrid'); window.switchProfileTab('video'); updateProfileUI(); }
 
-    checkBannerVisibility(id);
+    renderPageAds(id);
 };
 
 // --- 7. FEED & VIDEO LOGIC ---
@@ -371,7 +396,6 @@ async function loadVideos() {
             const safeUser = data.user || "User";
             const hasAd = data.ad_url && data.ad_url.length > 5 && data.ad_url !== 'null';
             
-            // FOLLOW BUTTON LOGIC
             const isMe = currentUser && data.uid === currentUser.id;
             const isFollowing = myFollowingIds.has(data.uid);
             
@@ -393,7 +417,6 @@ async function loadVideos() {
                     
                     <div class="absolute inset-0 z-0" onclick="togglePlay(this.parentElement.querySelector('#main_vid_${data.id}'), '${data.id}')"></div>
 
-                    <!-- AD OVERLAY (FEED) -->
                     <div id="ad_overlay_${data.id}" class="absolute inset-0 z-50 bg-black hidden flex flex-col justify-center items-center">
                         <div class="absolute top-2 right-2 bg-yellow-400 text-black text-[10px] font-bold px-2 py-1 rounded shadow z-50">SPONSORED</div>
                         <iframe id="ad_frame_${data.id}" class="w-full h-full border-0 bg-white hidden" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
@@ -410,8 +433,6 @@ async function loadVideos() {
                     </div>
 
                     <div class="absolute inset-0 flex flex-col justify-end p-4 pointer-events-none z-10 pb-[70px]">
-                        
-                        <!-- INSTAGRAM STYLE HEADER ROW (PFP + NAME + FOLLOW) -->
                         <div class="reel-header-row pointer-events-auto mb-2">
                             <div class="reel-pfp-container" onclick="openPublicProfile('${data.uid}', '${safeUser}')">
                                 <div class="w-full h-full rounded-full bg-black flex items-center justify-center font-bold text-sm text-white border-2 border-black">
@@ -515,6 +536,9 @@ window.skipAd = (videoId) => {
     if(overlay) overlay.classList.add('hidden');
     watchedAds.add(videoId);
     if(mainVid) mainVid.play().catch(e => console.log("Resume Error:", e));
+    
+    // Reward viewer for watching ad/video fully
+    rewardViewerForWatching();
 };
 
 let observer;
@@ -536,15 +560,67 @@ function setupScrollObserver() {
     document.querySelectorAll('.reel-item').forEach(item => observer.observe(item));
 }
 
+// 🔥🔥 NEW: REWARD SYSTEM FOR VIEWERS 🔥🔥
 async function incrementView(videoId) {
     if(!videoId) return;
     const viewKey = `viewed_${videoId}`;
     if (!localStorage.getItem(viewKey)) {
         localStorage.setItem(viewKey, "true");
+        // 1. Update Video View Count (Creator Stat)
         const { data } = await sb.from('videos').select('views').eq('id', videoId).single();
         if(data) await sb.from('videos').update({ views: (data.views || 0) + 1 }).eq('id', videoId);
+        
+        // 2. Reward Viewer (Watch & Earn)
+        await rewardViewerForWatching();
     }
 }
+
+async function rewardViewerForWatching() {
+    if (!currentUser) return;
+
+    // Track locally first
+    let localWatchCount = parseInt(localStorage.getItem(`watch_count_${currentUser.id}`) || '0');
+    localWatchCount++;
+    localStorage.setItem(`watch_count_${currentUser.id}`, localWatchCount);
+
+    // Add money to database
+    try {
+        const { data: user } = await sb.from('users').select('balance').eq('uid', currentUser.id).single();
+        if(user) {
+            const newBalance = (user.balance || 0) + appRates.watchReward;
+            await sb.from('users').update({ balance: newBalance }).eq('uid', currentUser.id);
+        }
+    } catch(e) { console.error("Reward Error", e); }
+}
+
+// 🔥 WATCH & EARN MODAL LOGIC 🔥
+window.openWatchEarn = async () => {
+    if(!currentUser) return alert("Login to access Watch & Earn!");
+    document.getElementById('watchEarnModal').classList.remove('hidden');
+
+    // Display Watch Count (Local)
+    const count = localStorage.getItem(`watch_count_${currentUser.id}`) || '0';
+    document.getElementById('watchCountDisplay').innerText = count;
+
+    // Display Earnings (DB Balance)
+    const { data } = await sb.from('users').select('balance').eq('uid', currentUser.id).single();
+    if(data) {
+        document.getElementById('watchEarningsDisplay').innerText = (data.balance || 0).toFixed(4);
+    }
+    
+    // Auto-update UI if open
+    if(window.watchInterval) clearInterval(window.watchInterval);
+    window.watchInterval = setInterval(async () => {
+        const { data: d } = await sb.from('users').select('balance').eq('uid', currentUser.id).single();
+        if(d) document.getElementById('watchEarningsDisplay').innerText = (d.balance || 0).toFixed(4);
+        document.getElementById('watchCountDisplay').innerText = localStorage.getItem(`watch_count_${currentUser.id}`) || '0';
+    }, 5000);
+};
+
+window.closeWatchEarn = () => {
+    document.getElementById('watchEarnModal').classList.add('hidden');
+    if(window.watchInterval) clearInterval(window.watchInterval);
+};
 
 window.togglePlay = (videoEl, videoId) => {
     if(!videoEl) return;
@@ -684,6 +760,9 @@ window.openPublicProfile = async (targetUid, fallbackUsername) => {
     if(check) setUnfollowState(followBtn, targetUid); else setFollowState(followBtn, targetUid);
     document.getElementById('publicMsgBtn').onclick = () => { openChat(targetUid, safeName, user.photo_url); };
     loadProfileVideos(targetUid, 'publicProfileGrid');
+
+    // Load Ads for Profile Screen
+    renderPageAds('publicProfileScreen');
 };
 
 function setFollowState(btn, targetUid) {
@@ -767,7 +846,6 @@ window.sendMessage = async () => {
 };
 
 // --- 9. UPLOAD & STORE ---
-
 function ensureUploadFields() {
     const priceContainer = document.getElementById('priceInputContainer');
     if(priceContainer && !document.getElementById('upiInputContainer')) {
@@ -900,7 +978,6 @@ window.previewAsset = (input) => { if (input.files[0]) { const img = document.ge
 
 
 // --- 10. UPDATED ASSET STORE ---
-
 window.filterStore = (category) => {
     currentStoreCategory = category;
     const buttons = ['cat-all', 'cat-emoji', 'cat-thumbnail', 'cat-sticker'];
@@ -995,9 +1072,8 @@ window.handleAssetDownload = async (assetId, url, price, upi, qr) => {
             if (timeLeft > 0) {
                 timerSpan.innerText = timeLeft;
             } else {
-                // 🔥 AUTO DOWNLOAD LOGIC HERE 🔥
                 clearInterval(interval);
-                skipStoreAdAndDownload(); // Auto-trigger download when timer hits 0
+                skipStoreAdAndDownload(); 
             }
         }, 1000);
     } else {
@@ -1052,54 +1128,41 @@ window.confirmPaymentAndDownload = () => {
     triggerRealDownload(pendingDownload.id, pendingDownload.url);
 };
 
-// 🔥 UNIVERSAL DIRECT DOWNLOAD & INSTANT UI UPDATE 🔥
+// 🔥 UNIVERSAL DIRECT DOWNLOAD FIX 🔥
 async function triggerRealDownload(assetId, url) {
     console.log("Starting download logic for ID:", assetId);
 
-    // UI Feedback
     const btn = document.querySelector(`button[onclick*='${assetId}']`);
     let originalText = "";
     if(btn) {
         originalText = btn.innerHTML;
-        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Processing...";
+        btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Saving...";
     }
 
-    // --- STEP 1: TRIGGER BROWSER DOWNLOAD (IMMEDIATELY) ---
     try {
-        const downloadUrl = url.includes('?') ? `${url}&download=` : `${url}?download=`;
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = `CreatorVerse_${assetId}`; 
-        link.target = '_blank';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } catch (error) {
-        console.warn("Download trigger failed", error);
-        window.open(url, '_blank');
-    }
-
-    // --- STEP 2: UPDATE UI INSTANTLY (OPTIMISTIC) ---
-    // Update Store Screen
-    const storeEl = document.getElementById(`store_dl_${assetId}`);
-    if(storeEl) storeEl.innerText = parseInt(storeEl.innerText || 0) + 1;
-
-    // Update Profile Screen
-    const profileEl = document.getElementById(`profile_dl_${assetId}`);
-    if(profileEl) profileEl.innerText = parseInt(profileEl.innerText || 0) + 1;
-
-    if(btn) btn.innerHTML = originalText || "<i class='fas fa-download mr-1'></i> Download";
-
-    // --- STEP 3: DATABASE UPDATE (BACKGROUND) ---
-    // We do NOT wait for this to finish before downloading
-    try {
-        const { data } = await sb.from('assets').select('downloads').eq('id', assetId).single();
-        if (data) {
-            await sb.from('assets').update({ downloads: (data.downloads || 0) + 1 }).eq('id', assetId);
-            console.log("Background DB update successful");
+        const { data, error: fetchError } = await sb.from('assets').select('downloads').eq('id', assetId).single();
+        if (!fetchError) {
+            const currentDownloads = data ? (data.downloads || 0) : 0;
+            const newDownloads = currentDownloads + 1;
+            await sb.from('assets').update({ downloads: newDownloads }).eq('id', assetId);
+            
+            const storeEl = document.getElementById(`store_dl_${assetId}`);
+            if(storeEl) storeEl.innerText = newDownloads;
+            const profileEl = document.getElementById(`profile_dl_${assetId}`);
+            if(profileEl) profileEl.innerText = newDownloads;
         }
     } catch (e) {
-        console.error("Background DB Update Failed:", e);
+        console.error("DB Update Failed:", e);
+    }
+
+    try {
+        const downloadUrl = url.includes('?') ? `${url}&download=` : `${url}?download=`;
+        window.location.href = downloadUrl;
+    } catch (error) {
+        console.warn("Download failed", error);
+        window.open(url, '_blank');
+    } finally {
+        if(btn) btn.innerHTML = originalText || "<i class='fas fa-download mr-1'></i> Download";
     }
 }
 
@@ -1110,30 +1173,22 @@ window.openStats = async () => {
     const list = document.getElementById('userStatsList');
     list.innerHTML = "<p class='text-center text-gray-500 py-4'>Calculating earnings...</p>";
 
-    // 1. Fetch User (Actual Wallet Balance from Admin payouts)
     const { data: userData } = await sb.from('users').select('balance').eq('uid', currentUser.id).single();
     const walletBalance = userData ? (userData.balance || 0) : 0;
-
-    // 2. Fetch Videos
     const { data: videos } = await sb.from('videos').select('*').eq('uid', currentUser.id).order('created_at', { ascending: false });
-    
-    // 3. Fetch Assets
     const { data: assets } = await sb.from('assets').select('*').eq('uid', currentUser.id).order('created_at', { ascending: false });
 
     let totalViews = 0;
     let totalDownloads = 0;
     let totalPendingEarnings = 0;
-
     let html = '';
 
-    // Render Videos
     if(videos && videos.length > 0) { 
         html += `<h3 class="text-white font-bold mb-2 ml-1">Your Videos</h3>`;
         videos.forEach(v => {
             totalViews += (v.views || 0);
             const vidEarn = (v.views || 0) * appRates.videoView; 
             totalPendingEarnings += vidEarn;
-
             html += `
             <div class="flex items-start gap-4 mb-4 bg-black/20 p-2 rounded-xl border border-gray-800/50">
                 <div class="w-16 h-20 flex-shrink-0 rounded-lg border border-gray-700 bg-gray-800 overflow-hidden relative">
@@ -1150,7 +1205,6 @@ window.openStats = async () => {
         }); 
     }
 
-    // Render Assets
     if(assets && assets.length > 0) {
         html += `<h3 class="text-white font-bold mb-2 ml-1 mt-4">Your Assets</h3>`;
         assets.forEach(a => {
@@ -1158,7 +1212,6 @@ window.openStats = async () => {
             totalDownloads += downloads;
             const assetEarn = downloads * appRates.assetDownload;
             totalPendingEarnings += assetEarn;
-
             html += `
             <div class="flex items-start gap-4 mb-4 bg-black/20 p-2 rounded-xl border border-gray-800/50">
                 <div class="w-16 h-16 flex-shrink-0 rounded-lg border border-gray-700 bg-gray-800 overflow-hidden relative">
@@ -1175,19 +1228,15 @@ window.openStats = async () => {
         });
     }
 
-    if(!videos?.length && !assets?.length) {
-        html = "<p class='text-gray-500 text-center py-10'>No uploads yet.</p>";
-    }
+    if(!videos?.length && !assets?.length) html = "<p class='text-gray-500 text-center py-10'>No uploads yet.</p>";
     
-    // CASH OUT BUTTON HERE
     html += `
     <div class="mt-6 border-t border-gray-700 pt-4">
         <button onclick="openCashoutModal()" class="w-full bg-green-500 hover:bg-green-600 text-black font-bold py-3 rounded-lg shadow-lg transform transition active:scale-95">
             Cash Out Now <i class="fas fa-wallet ml-2"></i>
         </button>
         <p class="text-center text-[10px] text-gray-500 mt-2">Only UPI & PayPal Supported</p>
-    </div>
-    `;
+    </div>`;
 
     list.innerHTML = html;
 
@@ -1202,35 +1251,68 @@ window.openStats = async () => {
     `;
 };
 
-// ADMIN PANEL
+// 🔥 UPDATED ADMIN PANEL 🔥
 window.openAdminPanel = async () => {
     document.getElementById('adminPanelModal').classList.remove('hidden');
     
+    // 1. App Rates & Ad Inputs
     const rateContainer = document.getElementById('adminRateControl');
-    if(!rateContainer.innerHTML.trim()) {
-        rateContainer.innerHTML = `
-            <div class="bg-gray-900 p-4 rounded-lg border border-gray-700 mb-4">
-                <h3 class="font-bold text-white mb-3 text-sm">💰 Set Earning Rates</h3>
-                <div class="flex space-x-2 mb-2">
+    rateContainer.innerHTML = `
+        <div class="bg-gray-900 p-4 rounded-lg border border-gray-700 mb-4 space-y-4">
+            
+            <!-- Rates -->
+            <div>
+                <h3 class="font-bold text-white mb-2 text-sm">💰 Earning Rates</h3>
+                <div class="flex space-x-2">
                     <div class="flex-1">
-                        <label class="text-[10px] text-gray-400">$/View (e.g 0.001)</label>
+                        <label class="text-[10px] text-gray-400">$/View (Creator)</label>
                         <input type="number" step="0.0001" id="rateViewInput" value="${appRates.videoView}" class="w-full bg-black text-white p-2 text-xs rounded border border-gray-600">
                     </div>
                     <div class="flex-1">
-                        <label class="text-[10px] text-gray-400">$/Download (e.g 0.02)</label>
+                        <label class="text-[10px] text-gray-400">$/Download</label>
                         <input type="number" step="0.01" id="rateDlInput" value="${appRates.assetDownload}" class="w-full bg-black text-white p-2 text-xs rounded border border-gray-600">
                     </div>
                 </div>
-                <button onclick="updateAppRates()" class="w-full bg-brand-500 hover:bg-brand-600 text-black font-bold text-xs py-2 rounded">Save Rates</button>
             </div>
-        `;
-    }
 
+            <!-- AD: HOME / FEED -->
+            <div>
+                <h3 class="font-bold text-brand-500 mb-2 text-sm">🏠 Home / Feed Ads</h3>
+                <label class="text-[10px] text-gray-400">Top Banner (Script)</label>
+                <textarea id="adFeedTop" class="w-full bg-black text-white p-2 text-xs rounded border border-gray-600 mb-2" rows="2" placeholder="Paste script here...">${appAdConfig.feed.top || ''}</textarea>
+                
+                <label class="text-[10px] text-gray-400">Bottom Banner (Script)</label>
+                <textarea id="adFeedBottom" class="w-full bg-black text-white p-2 text-xs rounded border border-gray-600" rows="2" placeholder="Paste script here...">${appAdConfig.feed.bottom || ''}</textarea>
+            </div>
+
+            <!-- AD: STORE -->
+            <div>
+                <h3 class="font-bold text-green-500 mb-2 text-sm">🛍️ Store Ads</h3>
+                <label class="text-[10px] text-gray-400">Top Banner (Script)</label>
+                <textarea id="adStoreTop" class="w-full bg-black text-white p-2 text-xs rounded border border-gray-600 mb-2" rows="2" placeholder="Paste script here...">${appAdConfig.store.top || ''}</textarea>
+                
+                <label class="text-[10px] text-gray-400">Bottom Banner (Script)</label>
+                <textarea id="adStoreBottom" class="w-full bg-black text-white p-2 text-xs rounded border border-gray-600" rows="2" placeholder="Paste script here...">${appAdConfig.store.bottom || ''}</textarea>
+            </div>
+
+            <!-- AD: PROFILE -->
+            <div>
+                <h3 class="font-bold text-blue-500 mb-2 text-sm">👤 Profile Ads</h3>
+                <label class="text-[10px] text-gray-400">Top Banner (Script)</label>
+                <textarea id="adProfileTop" class="w-full bg-black text-white p-2 text-xs rounded border border-gray-600 mb-2" rows="2" placeholder="Paste script here...">${appAdConfig.profile.top || ''}</textarea>
+                
+                <label class="text-[10px] text-gray-400">Bottom Banner (Script)</label>
+                <textarea id="adProfileBottom" class="w-full bg-black text-white p-2 text-xs rounded border border-gray-600" rows="2" placeholder="Paste script here...">${appAdConfig.profile.bottom || ''}</textarea>
+            </div>
+
+            <button onclick="updateAppConfigFull()" class="w-full bg-brand-500 hover:bg-brand-600 text-black font-bold py-3 rounded mt-2">SAVE ALL SETTINGS ✅</button>
+        </div>
+    `;
+
+    // 2. Load Top Videos for Payouts
     const list = document.getElementById('adminVideoList');
     list.innerHTML = "<p class='text-center p-4'>Loading...</p>";
-    
     const { data: videos } = await sb.from('videos').select('*').gte('views', 100).order('views', {ascending: false});
-    
     let html = '';
     if(videos && videos.length > 0) { 
         videos.forEach(v => { 
@@ -1250,31 +1332,35 @@ window.openAdminPanel = async () => {
                 </div>
             </div>`; 
         }); 
-    } else { 
-        html = "<p class='text-center text-gray-500 py-10'>No popular videos found.</p>"; 
-    }
+    } else { html = "<p class='text-center text-gray-500 py-10'>No popular videos found.</p>"; }
     list.innerHTML = html;
 };
 
-window.updateAppRates = async () => {
-    const vRate = document.getElementById('rateViewInput').value;
-    const dRate = document.getElementById('rateDlInput').value;
-    
-    if(!vRate || !dRate) return alert("Enter valid rates");
-    
-    try {
-        const { error: e1 } = await sb.from('app_config').upsert({ key: 'rate_video_view', value: vRate }, { onConflict: 'key' });
-        const { error: e2 } = await sb.from('app_config').upsert({ key: 'rate_asset_download', value: dRate }, { onConflict: 'key' });
+// 🔥 NEW FUNCTION TO SAVE ALL ADS AND RATES
+window.updateAppConfigFull = async () => {
+    const updates = [
+        { key: 'rate_video_view', value: document.getElementById('rateViewInput').value },
+        { key: 'rate_asset_download', value: document.getElementById('rateDlInput').value },
+        
+        { key: 'ad_feed_top', value: document.getElementById('adFeedTop').value },
+        { key: 'ad_feed_bottom', value: document.getElementById('adFeedBottom').value },
+        
+        { key: 'ad_store_top', value: document.getElementById('adStoreTop').value },
+        { key: 'ad_store_bottom', value: document.getElementById('adStoreBottom').value },
+        
+        { key: 'ad_profile_top', value: document.getElementById('adProfileTop').value },
+        { key: 'ad_profile_bottom', value: document.getElementById('adProfileBottom').value },
+    ];
 
-        if(!e1 && !e2) {
-            appRates.videoView = parseFloat(vRate);
-            appRates.assetDownload = parseFloat(dRate);
-            alert("Rates Updated Successfully!");
-        } else {
-            throw new Error("DB Error");
-        }
+    try {
+        const { error } = await sb.from('app_config').upsert(updates, { onConflict: 'key' });
+        if(error) throw error;
+        
+        alert("Settings Saved Successfully! Reload app to see changes.");
+        window.location.reload(); 
+
     } catch(e) {
-        alert("Error saving rates. Ensure 'app_config' table exists.");
+        alert("Error saving settings: " + e.message);
         console.error(e);
     }
 };
@@ -1381,7 +1467,6 @@ async function loadProfileAssets() {
     let html = '';
     if(assets && assets.length > 0) { 
         assets.forEach(data => { 
-            // 🔥 ADDED ID to allow instant updates
             html += `
             <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-800">
                 <div class="aspect-square">
