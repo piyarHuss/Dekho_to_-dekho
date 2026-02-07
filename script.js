@@ -1,6 +1,4 @@
-
 // --- 1. TAILWIND CONFIGURATION ---
-// localStorage.clear(); 
 tailwind.config = {
     theme: {
         extend: {
@@ -11,13 +9,20 @@ tailwind.config = {
             },
             animation: {
                 'spin-slow': 'spin 4s linear infinite',
+                'fade-in': 'fadeIn 0.3s ease-in-out'
+            },
+            keyframes: {
+                fadeIn: {
+                    '0%': { opacity: '0' },
+                    '100%': { opacity: '1' },
+                }
             }
         }
     }
 }
 
 // --- 2. CONFIG & INIT (SUPABASE) ---
-const log = (msg) => { console.log(msg); document.getElementById('debugLog').innerText = msg; };
+const log = (msg) => { console.log(msg); try { document.getElementById('debugLog').innerText = msg; } catch(e){} };
 
 // YOUR SUPABASE KEYS
 const SUPABASE_URL = "https://ubjfirquvrvughaxneyo.supabase.co";
@@ -40,18 +45,24 @@ let storeAdUrl = null;
 let currentStoreCategory = 'all'; 
 let pendingDownload = { id: null, url: null };
 
-// 🔥 NEW AD CONFIGURATION STATE
+// 🔥 CONFIGURATION STATE
 let appAdConfig = {
     feed: { top: '', bottom: '' },
     store: { top: '', bottom: '' },
     profile: { top: '', bottom: '' }
 };
 
+let appSettings = {
+    minWithdrawal: 5, 
+    adFrequencyStart: 5, 
+    adFrequencyNext: 15  
+};
+
 // 💰 EARNINGS RATES
 let appRates = {
-    videoView: 0.001,       // Creator earns this when their video is viewed
-    assetDownload: 0.02,    // Creator earns this per download
-    watchReward: 0.0005     // 🔥 NEW: Viewer earns this per video watched
+    videoView: 0.001,       
+    assetDownload: 0.02,    
+    watchReward: 0.0005     
 };
 
 // --- 3. AUTHENTICATION LOGIC ---
@@ -60,10 +71,18 @@ async function forceStartApp(user) {
     currentUser = user;
     
     // Inject Modals & Ad Containers
+    injectInAppBrowser(); 
     injectStoreAdModal();
     injectPaymentModal();
     injectCashoutModal();
     injectBannerContainers();
+
+    // Fix Main App Layout for Mobile Chrome (dvh fix)
+    const appEl = document.getElementById('app');
+    if(appEl) {
+        appEl.classList.remove('h-screen');
+        appEl.classList.add('h-[100dvh]', 'overflow-hidden'); // 🔥 FIX: Mobile Browser Height
+    }
 
     // Fetch Global Config
     await fetchAppConfig();
@@ -74,7 +93,6 @@ async function forceStartApp(user) {
         if (userData && userData.username) safeName = userData.username;
         else if (currentUser.email) safeName = currentUser.email.split('@')[0];
         
-        // Load Following List
         const { data: follows } = await sb.from('follows').select('following_id').eq('follower_id', currentUser.id);
         if(follows) follows.forEach(f => myFollowingIds.add(f.following_id));
         
@@ -87,44 +105,26 @@ async function forceStartApp(user) {
     document.getElementById('app').classList.remove('hidden');
     
     updateProfileUI();
-    loadVideos();
+    loadVideos(); 
     loadAssets('all'); 
     
-    // Initial Ad Render for Feed
     renderPageAds('feedScreen');
 
     if(currentUser.email === "admin@gmail.com") document.getElementById('adminBtn').classList.remove('hidden');
 }
 
-// --- 4. APP CONFIG & BANNER ADS MANAGEMENT ---
-
+// --- 4. APP CONFIG ---
 async function fetchAppConfig() {
     try {
-        // 1. Fetch Store Ad & Rates
-        const { data: storeData } = await sb.from('app_config').select('value').eq('key', 'store_ad_url').single();
-        if (storeData && storeData.value && storeData.value.length > 5) storeAdUrl = storeData.value;
+        const { data: settings } = await sb.from('app_config').select('key, value');
+        if (settings) {
+            settings.forEach(item => {
+                if (item.key === 'store_ad_url' && item.value.length > 5) storeAdUrl = item.value;
+                if (item.key === 'rate_video_view') appRates.videoView = parseFloat(item.value);
+                if (item.key === 'rate_asset_download') appRates.assetDownload = parseFloat(item.value);
+                if (item.key === 'rate_watch_reward') appRates.watchReward = parseFloat(item.value);
+                if (item.key === 'min_withdrawal') appSettings.minWithdrawal = parseFloat(item.value);
 
-        const { data: viewRate } = await sb.from('app_config').select('value').eq('key', 'rate_video_view').single();
-        if (viewRate && viewRate.value) appRates.videoView = parseFloat(viewRate.value);
-
-        const { data: dlRate } = await sb.from('app_config').select('value').eq('key', 'rate_asset_download').single();
-        if (dlRate && dlRate.value) appRates.assetDownload = parseFloat(dlRate.value);
-        
-        // Fetch Watch Reward (if exists, else default)
-        const { data: watchRate } = await sb.from('app_config').select('value').eq('key', 'rate_watch_reward').single();
-        if (watchRate && watchRate.value) appRates.watchReward = parseFloat(watchRate.value);
-
-        // 2. Fetch Banner Ads
-        const keys = [
-            'ad_feed_top', 'ad_feed_bottom',
-            'ad_store_top', 'ad_store_bottom',
-            'ad_profile_top', 'ad_profile_bottom'
-        ];
-        
-        const { data: adsData } = await sb.from('app_config').select('key, value').in('key', keys);
-        
-        if (adsData) {
-            adsData.forEach(item => {
                 if (item.key === 'ad_feed_top') appAdConfig.feed.top = item.value;
                 if (item.key === 'ad_feed_bottom') appAdConfig.feed.bottom = item.value;
                 if (item.key === 'ad_store_top') appAdConfig.store.top = item.value;
@@ -133,43 +133,23 @@ async function fetchAppConfig() {
                 if (item.key === 'ad_profile_bottom') appAdConfig.profile.bottom = item.value;
             });
         }
-
     } catch (e) { console.log("Config Fetch Error", e); }
 }
 
 function injectBannerContainers() {
     if(document.getElementById('appBannerTop')) return;
-
-    // TOP BANNER
     const topDiv = document.createElement('div');
     topDiv.id = 'appBannerTop';
-    topDiv.className = 'fixed top-0 left-0 w-full z-[45] flex justify-center items-start pointer-events-none hidden pt-2';
-    topDiv.innerHTML = `
-        <div class="bg-transparent pointer-events-auto relative flex flex-col items-center">
-            <div class="relative">
-                <button onclick="document.getElementById('appBannerTop').classList.add('hidden')" 
-                    class="absolute -bottom-6 right-0 bg-gray-900 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] border border-gray-600 shadow-md z-50">
-                    <i class="fas fa-times"></i>
-                </button>
-                <div id="bannerContentTop" class="min-w-[300px] min-h-[50px] flex justify-center items-center overflow-hidden bg-gray-800/80 backdrop-blur-sm rounded-md border border-gray-700 shadow-lg"></div>
-            </div>
-        </div>`;
+    // 🔥 FIX: Added safe-area padding and z-index adjustments
+    topDiv.className = 'fixed top-0 left-0 w-full z-[45] flex justify-center items-start pointer-events-none hidden pt-safe mt-2';
+    topDiv.innerHTML = `<div class="bg-transparent pointer-events-auto relative flex flex-col items-center"><div class="relative"><button onclick="document.getElementById('appBannerTop').classList.add('hidden')" class="absolute -bottom-6 right-0 bg-gray-900 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] border border-gray-600 shadow-md z-50"><i class="fas fa-times"></i></button><div id="bannerContentTop" class="min-w-[300px] min-h-[50px] flex justify-center items-center overflow-hidden bg-gray-800/80 backdrop-blur-sm rounded-md border border-gray-700 shadow-lg pointer-events-auto"></div></div></div>`;
     document.body.appendChild(topDiv);
 
-    // BOTTOM BANNER
     const botDiv = document.createElement('div');
     botDiv.id = 'appBannerBottom';
-    botDiv.className = 'fixed bottom-[60px] left-0 w-full z-[40] flex justify-center items-end pointer-events-none hidden pb-2';
-    botDiv.innerHTML = `
-        <div class="bg-transparent pointer-events-auto relative flex flex-col items-center">
-            <div class="relative">
-                <button onclick="document.getElementById('appBannerBottom').classList.add('hidden')" 
-                    class="absolute -top-6 right-0 bg-gray-900 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] border border-gray-600 shadow-md z-50">
-                    <i class="fas fa-times"></i>
-                </button>
-                <div id="bannerContentBottom" class="min-w-[300px] min-h-[50px] flex justify-center items-center overflow-hidden bg-gray-800/80 backdrop-blur-sm rounded-md border border-gray-700 shadow-lg"></div>
-            </div>
-        </div>`;
+    // 🔥 FIX: Adjusted bottom position to respect navbar (approx 65px + safe area)
+    botDiv.className = 'fixed bottom-[70px] left-0 w-full z-[40] flex justify-center items-end pointer-events-none hidden pb-safe mb-2';
+    botDiv.innerHTML = `<div class="bg-transparent pointer-events-auto relative flex flex-col items-center"><div class="relative"><button onclick="document.getElementById('appBannerBottom').classList.add('hidden')" class="absolute -top-6 right-0 bg-gray-900 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] border border-gray-600 shadow-md z-50"><i class="fas fa-times"></i></button><div id="bannerContentBottom" class="min-w-[300px] min-h-[50px] flex justify-center items-center overflow-hidden bg-gray-800/80 backdrop-blur-sm rounded-md border border-gray-700 shadow-lg pointer-events-auto"></div></div></div>`;
     document.body.appendChild(botDiv);
 }
 
@@ -187,7 +167,6 @@ function renderPageAds(screenId) {
     if (screenId === 'authScreen' || screenId === 'cameraScreen') return;
 
     let targetConfig = { top: null, bottom: null };
-
     if (screenId === 'feedScreen') targetConfig = appAdConfig.feed;
     else if (screenId === 'storeScreen') targetConfig = appAdConfig.store;
     else if (screenId === 'profileScreen' || screenId === 'publicProfileScreen') targetConfig = appAdConfig.profile;
@@ -196,7 +175,6 @@ function renderPageAds(screenId) {
         topContainer.classList.remove('hidden');
         setAndExecuteScript(topContent, targetConfig.top);
     }
-
     if (targetConfig.bottom && targetConfig.bottom.trim() !== "") {
         botContainer.classList.remove('hidden');
         setAndExecuteScript(botContent, targetConfig.bottom);
@@ -214,11 +192,82 @@ function setAndExecuteScript(container, html) {
     });
 }
 
-// --- 5. MODALS (STORE, PAYMENT & CASHOUT) ---
+// --- 🔥 IN-APP BROWSER LOGIC (FIXED FOR ADS) ---
+function injectInAppBrowser() {
+    if(document.getElementById('inAppBrowserModal')) return;
+    const modalHtml = `
+    <div id="inAppBrowserModal" class="fixed inset-0 z-[100] bg-white hidden flex flex-col animate-fade-in h-[100dvh]">
+        <!-- Browser Header -->
+        <div class="h-14 bg-gray-900 flex items-center justify-between px-4 border-b border-gray-700 shadow-lg shrink-0 pt-safe-top">
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-yellow-400 bg-yellow-500/10 px-2 py-1 rounded border border-yellow-500/30">SPONSORED</span>
+                <span id="inAppUrlText" class="text-gray-400 text-[10px] truncate max-w-[200px]">Loading...</span>
+            </div>
+            <div class="flex gap-2">
+                 <button onclick="document.getElementById('inAppFrame').src = document.getElementById('inAppFrame').src" class="bg-gray-800 text-white w-8 h-8 rounded-full flex items-center justify-center"><i class="fas fa-redo text-xs"></i></button>
+                 <button onclick="closeInAppBrowser()" class="bg-gray-800 hover:bg-gray-700 text-white w-8 h-8 rounded-full flex items-center justify-center transition">
+                    <i class="fas fa-times text-sm"></i>
+                </button>
+            </div>
+        </div>
+        <!-- Iframe Container - 🔥 FIX: Allowed Forms/Popups/Modals/TopNav -->
+        <div class="flex-1 w-full bg-gray-100 relative">
+            <div id="inAppLoader" class="absolute inset-0 flex items-center justify-center text-gray-400 bg-gray-900">
+                <i class="fas fa-spinner fa-spin text-2xl"></i>
+            </div>
+            <iframe id="inAppFrame" class="w-full h-full border-0" 
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-top-navigation-by-user-activation">
+            </iframe>
+        </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+window.openInAppBrowser = (url) => {
+    if(!url || url === 'null') return;
+    console.log("Opening Internal Browser for:", url);
+    const modal = document.getElementById('inAppBrowserModal');
+    const frame = document.getElementById('inAppFrame');
+    const urlText = document.getElementById('inAppUrlText');
+    const loader = document.getElementById('inAppLoader');
+    
+    // Show Modal
+    modal.classList.remove('hidden');
+    loader.classList.remove('hidden');
+    urlText.innerText = url;
+    
+    // Load URL
+    frame.onload = () => { loader.classList.add('hidden'); };
+    frame.src = url;
+};
+
+window.closeInAppBrowser = () => {
+    const modal = document.getElementById('inAppBrowserModal');
+    const frame = document.getElementById('inAppFrame');
+    modal.classList.add('hidden');
+    frame.src = "about:blank"; 
+};
+
+// --- 5. CASHOUT & HISTORY ---
 function injectCashoutModal() {
     if(document.getElementById('cashoutModal')) return; 
-    // Already in HTML, handled by ID
 }
+
+window.openCashoutModal = async () => {
+    if (!currentUser) return;
+    document.getElementById('cashoutModal').classList.remove('hidden');
+    document.getElementById('cashoutMinText').innerText = `Minimum withdrawal: $${appSettings.minWithdrawal}`;
+
+    const { data: user } = await sb.from('users').select('balance').eq('uid', currentUser.id).single();
+    if (user) {
+        document.getElementById('cashoutAvailableDisplay').innerText = `$${(user.balance || 0).toFixed(2)}`;
+    }
+    loadWithdrawalHistory();
+};
+
+window.closeCashoutModal = () => {
+    document.getElementById('cashoutModal').classList.add('hidden');
+};
 
 window.toggleCashoutFields = () => {
     const method = document.getElementById('cashoutMethod').value;
@@ -235,10 +284,9 @@ window.submitCashout = async () => {
     const method = document.getElementById('cashoutMethod').value;
     const amount = parseFloat(document.getElementById('cashoutAmount').value);
     
-    if (amount < 10) return alert("Minimum withdrawal is $10");
+    if (amount < appSettings.minWithdrawal) return alert(`Minimum withdrawal is $${appSettings.minWithdrawal}`);
     if (isNaN(amount)) return alert("Invalid amount");
     
-    // Check balance
     const { data } = await sb.from('users').select('balance').eq('uid', currentUser.id).single();
     if (!data || data.balance < amount) return alert("Insufficient Balance!");
 
@@ -246,7 +294,6 @@ window.submitCashout = async () => {
     if (!details || details.length < 5) return alert("Invalid Payment Details");
 
     try {
-        // Create withdrawal record
         await sb.from('withdrawals').insert({
             user_id: currentUser.id,
             amount: amount,
@@ -255,32 +302,123 @@ window.submitCashout = async () => {
             status: 'Pending'
         });
 
-        // Deduct balance
         await sb.from('users').update({ balance: data.balance - amount }).eq('uid', currentUser.id);
 
         alert(`Withdrawal Request Sent for $${amount}!`);
-        document.getElementById('cashoutModal').classList.add('hidden');
+        openCashoutModal(); 
     } catch(e) {
         alert("Error: " + e.message);
     }
 };
 
+async function loadWithdrawalHistory() {
+    const historyContainer = document.getElementById('cashoutHistoryList');
+    
+    historyContainer.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-8 space-y-3 opacity-60">
+            <div class="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+            <p class="text-[10px] uppercase tracking-widest text-gray-400">Syncing Transactions...</p>
+        </div>`;
+
+    const { data: list } = await sb.from('withdrawals')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+    if (list && list.length > 0) {
+        let html = '';
+        list.forEach(item => {
+            let statusBadgeClass = '';
+            let statusIcon = '';
+            let statusText = item.status; 
+
+            if (item.status === 'Success' || item.status === 'Paid') {
+                statusText = 'Success';
+                statusBadgeClass = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+                statusIcon = '<i class="fas fa-check-circle mr-1"></i>';
+            } 
+            else if (item.status === 'Pending') {
+                statusBadgeClass = 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+                statusIcon = '<i class="fas fa-clock mr-1"></i>';
+            } 
+            else {
+                statusBadgeClass = 'bg-rose-500/10 text-rose-400 border border-rose-500/20';
+                statusIcon = '<i class="fas fa-times-circle mr-1"></i>';
+            }
+
+            let methodIconClass = 'fa-university'; 
+            let methodBgClass = 'bg-gray-800 text-gray-400';
+            
+            if (item.method === 'upi') {
+                methodIconClass = 'fa-qrcode';
+                methodBgClass = 'bg-purple-500/20 text-purple-400';
+            } else if (item.method === 'paypal') {
+                methodIconClass = 'fa-paypal';
+                methodBgClass = 'bg-blue-500/20 text-blue-400';
+            }
+
+            const d = new Date(item.created_at);
+            const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); 
+            const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }); 
+
+            html += `
+            <div class="group flex items-center justify-between p-3 mb-2 bg-gray-900 border border-gray-800 rounded-xl hover:border-gray-700 transition-all duration-300">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full ${methodBgClass} flex items-center justify-center border border-white/5 shadow-inner">
+                        <i class="fas ${methodIconClass} text-sm"></i>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs font-bold text-gray-200 uppercase tracking-wide">${item.method}</span>
+                        <span class="text-[10px] text-gray-500 font-mono">${dateStr} • ${timeStr}</span>
+                    </div>
+                </div>
+                <div class="flex flex-col items-end gap-1.5">
+                    <span class="text-white font-black text-sm tracking-wide">$${parseFloat(item.amount).toFixed(2)}</span>
+                    <div class="px-2 py-[2px] rounded-md flex items-center ${statusBadgeClass} shadow-sm">
+                        <span class="text-[8px]">${statusIcon}</span>
+                        <span class="text-[9px] font-bold uppercase tracking-wider">${statusText}</span>
+                    </div>
+                </div>
+            </div>`;
+        });
+        historyContainer.innerHTML = html;
+    } else {
+        historyContainer.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-10 text-gray-600">
+            <div class="w-12 h-12 bg-gray-900 rounded-full flex items-center justify-center mb-3">
+                <i class="fas fa-receipt text-gray-700 text-xl"></i>
+            </div>
+            <p class="text-xs font-bold text-gray-500">No transactions found</p>
+        </div>`;
+    }
+}
+
+// --- 6. MODALS & HELPERS (🔥 FIXED AD CLICKS) ---
 function injectStoreAdModal() {
     if(document.getElementById('storeAdModal')) return;
     const modalHtml = `
-    <div id="storeAdModal" class="fixed inset-0 z-[60] bg-black hidden flex flex-col items-center justify-center">
-        <div class="absolute top-4 right-4 z-50">
-             <span class="bg-yellow-500 text-black font-bold text-xs px-2 py-1 rounded">SPONSORED AD</span>
+    <div id="storeAdModal" class="fixed inset-0 z-[60] bg-black hidden flex flex-col items-center justify-center h-[100dvh]">
+        <div class="absolute top-4 right-4 z-50 pointer-events-none">
+             <span class="bg-yellow-500 text-black font-bold text-xs px-2 py-1 rounded shadow-md">SPONSORED AD</span>
         </div>
-        <div class="w-full h-full md:w-3/4 md:h-3/4 relative bg-black flex items-center justify-center overflow-hidden">
-            <iframe id="storeAdFrame" class="w-full h-full border-0 bg-white" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+        
+        <!-- 🔥 FIX: Removed overlay that blocked clicks on "Verify" -->
+        <!-- The iframe is now directly clickable -->
+
+        <div class="w-full h-full md:w-3/4 md:h-3/4 relative bg-black flex items-center justify-center overflow-hidden pointer-events-auto">
+            <!-- 🔥 FIX: Added allow-forms allow-popups for Verify checkbox -->
+            <iframe id="storeAdFrame" class="w-full h-full border-0 bg-white" 
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-top-navigation-by-user-activation">
+            </iframe>
             <video id="storeAdVideo" class="w-full h-full object-contain hidden" playsinline></video>
         </div>
+        
         <div class="absolute bottom-10 right-5 z-50 flex flex-col items-end pointer-events-none">
             <div id="storeAdTimerBox" class="bg-gray-900/80 text-white border border-gray-600 px-6 py-3 rounded-full backdrop-blur-md mb-2 font-bold pointer-events-auto">
                 Downloading in <span id="storeAdTimer" class="text-brand-500">10</span>s
             </div>
-            <button id="storeAdSkipBtn" class="hidden"></button>
+            <button id="storeAdSkipBtn" class="hidden pointer-events-auto bg-white text-black font-bold px-4 py-2 rounded-full shadow-lg">Skip Ad</button>
         </div>
     </div>`;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
@@ -312,7 +450,7 @@ function injectPaymentModal() {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// --- 6. STANDARD FUNCTIONS ---
+// --- 7. STANDARD AUTH & HELPERS ---
 function startMessageListener() {
     if(!currentUser) return;
     sb.channel('public:messages')
@@ -383,81 +521,169 @@ window.showScreen = (id) => {
     renderPageAds(id);
 };
 
-// --- 7. FEED & VIDEO LOGIC ---
+// --- 8. 🔥 FEED LOGIC (BOOST & ADS) 🔥 ---
+function getSeenVideos() {
+    try {
+        return JSON.parse(localStorage.getItem('seen_videos') || '[]');
+    } catch(e) { return []; }
+}
+
+function saveSeenVideo(id) {
+    let seen = getSeenVideos();
+    if(!seen.includes(id)) {
+        seen.push(id);
+        if(seen.length > 200) seen.shift(); 
+        localStorage.setItem('seen_videos', JSON.stringify(seen));
+    }
+}
+
 async function loadVideos() {
-    const { data: videos } = await sb.from('videos').select('*').order('created_at', { ascending: false });
     const container = document.getElementById('reelContainer');
-    let html = '';
+    const { data: allVideos } = await sb.from('videos').select('*').order('created_at', { ascending: false }).limit(100);
     
-    if (videos && videos.length > 0) {
-        videos.forEach(data => {
-            let likeKey = currentUser ? `liked_${data.id}_${currentUser.id}` : null;
-            const isLiked = (currentUser && localStorage.getItem(likeKey)) ? 'text-brand-500' : 'text-white';
-            const safeUser = data.user || "User";
-            const hasAd = data.ad_url && data.ad_url.length > 5 && data.ad_url !== 'null';
-            
-            const isMe = currentUser && data.uid === currentUser.id;
-            const isFollowing = myFollowingIds.has(data.uid);
-            
-            let followBtnHtml = '';
-            if (!isMe && !isFollowing) {
-                followBtnHtml = `<button id="feed_follow_${data.id}" onclick="followUserFromFeed('${data.uid}', 'feed_follow_${data.id}')" class="reel-follow-btn">Follow</button>`;
+    if (!allVideos || allVideos.length === 0) {
+        container.innerHTML = "<p class='text-center pt-20 text-gray-500'>No videos yet</p>";
+        return;
+    }
+
+    const seenIds = getSeenVideos();
+
+    // SMART SORT
+    const sortedVideos = allVideos.sort((a, b) => {
+        const aBoost = a.boost_score || 0;
+        const bBoost = b.boost_score || 0;
+        const aSeen = seenIds.includes(a.id) ? 1 : 0;
+        const bSeen = seenIds.includes(b.id) ? 1 : 0;
+        if (aSeen !== bSeen) return aSeen - bSeen; 
+        if (aBoost !== bBoost) return bBoost - aBoost;
+        return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    // AD INJECTION
+    let html = '';
+    let videoCount = 0;
+    
+    let nextAdIndex = Math.floor(Math.random() * (10 - 5 + 1) + 5); 
+    let adsShown = 0;
+
+    sortedVideos.forEach((data, index) => {
+        if (videoCount === nextAdIndex) {
+            if (storeAdUrl && storeAdUrl !== 'null') {
+                html += generateAdSlideHtml(`ad_${Date.now()}_${index}`, storeAdUrl);
+                videoCount = 0;
+                adsShown++;
+                nextAdIndex = Math.floor(Math.random() * (20 - 15 + 1) + 15); 
             }
+        }
+        html += generateVideoHtml(data);
+        videoCount++;
+    });
 
-            html += `
-                <div class="reel-item relative h-full w-full bg-black overflow-hidden">
-                    <video 
-                        id="main_vid_${data.id}"
-                        src="${data.url || ''}" 
-                        loop 
-                        playsinline 
-                        class="h-full w-full object-cover"
-                        ontimeupdate="checkAdTrigger(this, '${data.id}', '${hasAd ? data.ad_url : ''}')"
-                    ></video>
-                    
-                    <div class="absolute inset-0 z-0" onclick="togglePlay(this.parentElement.querySelector('#main_vid_${data.id}'), '${data.id}')"></div>
+    container.innerHTML = html;
+    setTimeout(setupScrollObserver, 500);
+}
 
-                    <div id="ad_overlay_${data.id}" class="absolute inset-0 z-50 bg-black hidden flex flex-col justify-center items-center">
-                        <div class="absolute top-2 right-2 bg-yellow-400 text-black text-[10px] font-bold px-2 py-1 rounded shadow z-50">SPONSORED</div>
-                        <iframe id="ad_frame_${data.id}" class="w-full h-full border-0 bg-white hidden" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
-                        <video id="ad_vid_${data.id}" class="w-full h-full object-contain bg-black hidden"></video>
+function generateAdSlideHtml(adId, url) {
+    const isVideo = url.includes('.mp4') || url.includes('.webm');
+    let content = '';
+    
+    if(isVideo) {
+        content = `<video src="${url}" loop playsinline class="h-full w-full object-cover pointer-events-none" autoplay muted controlsList="nodownload"></video>`;
+    } else {
+        // 🔥 FIX: Allowed interactions in feed ads too
+        content = `<iframe src="${url}" class="w-full h-full border-0 bg-white pointer-events-auto" 
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"></iframe>`;
+    }
 
-                        <div class="absolute bottom-20 right-4 z-50 flex flex-col items-end pointer-events-none">
-                            <div id="ad_timer_box_${data.id}" class="bg-black/60 text-white text-xs px-4 py-2 rounded-full backdrop-blur-md mb-2">
-                                Skip in <span id="ad_timer_val_${data.id}">10</span>s
-                            </div>
-                            <button id="ad_skip_btn_${data.id}" onclick="skipAd('${data.id}')" class="hidden pointer-events-auto bg-white text-black font-bold text-xs px-4 py-2 rounded-full hover:bg-gray-200 transition">
-                                Close Ad <i class="fas fa-times ml-1"></i>
-                            </button>
+    return `
+    <div class="reel-item relative h-full w-full bg-black overflow-hidden flex items-center justify-center border-b-4 border-yellow-500">
+        <div class="absolute top-4 right-4 z-50 bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded shadow-lg uppercase pointer-events-none">Sponsored</div>
+        
+        <!-- 🔥 FIX: Removed overlay that forced click, allowed direct interaction -->
+        <!-- If you prefer click-to-open, uncomment the div below but it blocks CAPTCHA -->
+        <!-- <div class="absolute inset-0 z-40 bg-transparent cursor-pointer" onclick="openInAppBrowser('${url}')"></div> -->
+
+        <div class="w-full h-full relative z-10 pointer-events-auto">
+            ${content}
+        </div>
+        <div class="absolute bottom-10 w-full text-center z-50 pointer-events-none">
+            <p class="text-white font-bold text-shadow bg-black/50 inline-block px-4 py-1 rounded-full">Sponsored Advertisement</p>
+        </div>
+    </div>
+    `;
+}
+
+function generateVideoHtml(data) {
+    let likeKey = currentUser ? `liked_${data.id}_${currentUser.id}` : null;
+    const isLiked = (currentUser && localStorage.getItem(likeKey)) ? 'text-brand-500' : 'text-white';
+    const safeUser = data.user || "User";
+    
+    const hasAd = data.ad_url && data.ad_url.length > 5 && data.ad_url !== 'null';
+    
+    const isMe = currentUser && data.uid === currentUser.id;
+    const isFollowing = myFollowingIds.has(data.uid);
+    
+    let followBtnHtml = '';
+    if (!isMe && !isFollowing) {
+        followBtnHtml = `<button id="feed_follow_${data.id}" onclick="followUserFromFeed('${data.uid}', 'feed_follow_${data.id}')" class="reel-follow-btn pointer-events-auto">Follow</button>`;
+    }
+
+    return `
+        <div class="reel-item relative h-full w-full bg-black overflow-hidden" data-vid-id="${data.id}">
+            <video 
+                id="main_vid_${data.id}"
+                src="${data.url || ''}" 
+                loop 
+                playsinline 
+                class="h-full w-full object-cover"
+                ontimeupdate="checkAdTrigger(this, '${data.id}', '${hasAd ? data.ad_url : ''}')"
+            ></video>
+            
+            <div class="absolute inset-0 z-0" onclick="togglePlay(this.parentElement.querySelector('#main_vid_${data.id}'), '${data.id}')"></div>
+
+            <div id="ad_overlay_${data.id}" class="absolute inset-0 z-[60] bg-black hidden flex flex-col justify-center items-center pointer-events-auto">
+                <div class="absolute top-2 right-2 bg-yellow-400 text-black text-[10px] font-bold px-2 py-1 rounded shadow z-50 pointer-events-none">SPONSORED</div>
+                
+                <!-- 🔥 FIX: Removed click blocking overlay for in-video ads too -->
+                
+                <iframe id="ad_frame_${data.id}" class="w-full h-full border-0 bg-white hidden pointer-events-auto" 
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups">
+                </iframe>
+                
+                <video id="ad_vid_${data.id}" class="w-full h-full object-contain bg-black hidden pointer-events-none"></video>
+
+                <div class="absolute bottom-20 right-4 z-50 flex flex-col items-end pointer-events-none">
+                    <div id="ad_timer_box_${data.id}" class="bg-black/60 text-white text-xs px-4 py-2 rounded-full backdrop-blur-md mb-2 pointer-events-auto">
+                        Skip in <span id="ad_timer_val_${data.id}">10</span>s
+                    </div>
+                    <button id="ad_skip_btn_${data.id}" onclick="skipAd('${data.id}')" class="hidden pointer-events-auto bg-white text-black font-bold text-xs px-4 py-2 rounded-full hover:bg-gray-200 transition">
+                        Close Ad <i class="fas fa-times ml-1"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="absolute inset-0 flex flex-col justify-end p-4 pointer-events-none z-10 pb-[70px]">
+                <div class="reel-header-row pointer-events-auto mb-2">
+                    <div class="reel-pfp-container" onclick="openPublicProfile('${data.uid}', '${safeUser}')">
+                        <div class="w-full h-full rounded-full bg-black flex items-center justify-center font-bold text-sm text-white border-2 border-black">
+                            ${safeUser[0].toUpperCase()}
                         </div>
                     </div>
+                    <span class="reel-username-text" onclick="openPublicProfile('${data.uid}', '${safeUser}')">${safeUser}</span>
+                    ${followBtnHtml}
+                </div>
 
-                    <div class="absolute inset-0 flex flex-col justify-end p-4 pointer-events-none z-10 pb-[70px]">
-                        <div class="reel-header-row pointer-events-auto mb-2">
-                            <div class="reel-pfp-container" onclick="openPublicProfile('${data.uid}', '${safeUser}')">
-                                <div class="w-full h-full rounded-full bg-black flex items-center justify-center font-bold text-sm text-white border-2 border-black">
-                                    ${safeUser[0].toUpperCase()}
-                                </div>
-                            </div>
-                            <span class="reel-username-text" onclick="openPublicProfile('${data.uid}', '${safeUser}')">${safeUser}</span>
-                            ${followBtnHtml}
-                        </div>
-
-                        <div class="mb-2 pointer-events-auto w-3/4">
-                            <p class="text-sm text-gray-100 shadow-black drop-shadow-md leading-tight">${data.desc || ''}</p>
-                        </div>
-                        
-                        <div class="absolute right-2 bottom-16 flex flex-col items-center space-y-6 pointer-events-auto pb-4">
-                            <button onclick="handleLike(this, '${data.id}', ${data.likes || 0})" class="flex flex-col items-center"><i class="fas fa-heart text-3xl drop-shadow-lg ${isLiked}"></i><span class="text-xs font-bold text-white">${data.likes || 0}</span></button>
-                            <button onclick="openComments('${data.id}')" class="flex flex-col items-center"><i class="fas fa-comment-dots text-3xl drop-shadow-lg text-white"></i><span class="text-xs font-bold text-white">Chat</span></button>
-                            <button onclick="shareVideo('${data.desc}', '${data.url}')" class="flex flex-col items-center"><i class="fas fa-share text-3xl drop-shadow-lg text-white"></i><span class="text-xs font-bold text-white">Share</span></button>
-                        </div>
-                    </div>
-                </div>`;
-        });
-        container.innerHTML = html;
-        setTimeout(setupScrollObserver, 500);
-    } else { container.innerHTML = "<p class='text-center pt-20 text-gray-500'>No videos yet</p>"; }
+                <div class="mb-2 pointer-events-auto w-3/4">
+                    <p class="text-sm text-gray-100 shadow-black drop-shadow-md leading-tight">${data.desc || ''}</p>
+                </div>
+                
+                <div class="absolute right-2 bottom-16 flex flex-col items-center space-y-6 pointer-events-auto pb-4">
+                    <button onclick="handleLike(this, '${data.id}', ${data.likes || 0})" class="flex flex-col items-center"><i class="fas fa-heart text-3xl drop-shadow-lg ${isLiked}"></i><span class="text-xs font-bold text-white">${data.likes || 0}</span></button>
+                    <button onclick="openComments('${data.id}')" class="flex flex-col items-center"><i class="fas fa-comment-dots text-3xl drop-shadow-lg text-white"></i><span class="text-xs font-bold text-white">Chat</span></button>
+                    <button onclick="shareVideo('${data.desc}', '${data.url}')" class="flex flex-col items-center"><i class="fas fa-share text-3xl drop-shadow-lg text-white"></i><span class="text-xs font-bold text-white">Share</span></button>
+                </div>
+            </div>
+        </div>`;
 }
 
 window.followUserFromFeed = async (targetUid, btnId) => {
@@ -537,7 +763,6 @@ window.skipAd = (videoId) => {
     watchedAds.add(videoId);
     if(mainVid) mainVid.play().catch(e => console.log("Resume Error:", e));
     
-    // Reward viewer for watching ad/video fully
     rewardViewerForWatching();
 };
 
@@ -548,42 +773,51 @@ function setupScrollObserver() {
     observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
             const video = entry.target.querySelector('video[id^="main_vid_"]');
+            
+            const isAdSlide = entry.target.innerHTML.includes("Sponsored");
+
             if(entry.isIntersecting) {
-                if(video && video.getAttribute('src')) { video.play().catch(e => console.log("Autoplay blocked/Source error", e)); }
-                const videoId = entry.target.querySelector('div[onclick*="togglePlay"]')?.getAttribute('onclick').split("'")[3];
-                if(videoId) incrementView(videoId);
+                if (isAdSlide) {
+                    const adVid = entry.target.querySelector('video');
+                    if(adVid) adVid.play();
+                } else if (video && video.getAttribute('src')) { 
+                    video.play().catch(e => console.log("Autoplay blocked/Source error", e)); 
+                    const videoId = entry.target.getAttribute('data-vid-id');
+                    if(videoId) incrementView(videoId);
+                }
             } else { 
                 if(video) video.pause(); 
+                const adVid = entry.target.querySelector('video');
+                if(adVid) adVid.pause();
             }
         });
     }, options);
     document.querySelectorAll('.reel-item').forEach(item => observer.observe(item));
 }
 
-// 🔥🔥 NEW: REWARD SYSTEM FOR VIEWERS 🔥🔥
+// 🔥 REWARD SYSTEM 🔥
 async function incrementView(videoId) {
     if(!videoId) return;
+    saveSeenVideo(videoId); 
+
     const viewKey = `viewed_${videoId}`;
     if (!localStorage.getItem(viewKey)) {
         localStorage.setItem(viewKey, "true");
-        // 1. Update Video View Count (Creator Stat)
+        // 1. Update Video View Count
         const { data } = await sb.from('videos').select('views').eq('id', videoId).single();
         if(data) await sb.from('videos').update({ views: (data.views || 0) + 1 }).eq('id', videoId);
         
-        // 2. Reward Viewer (Watch & Earn)
+        // 2. Reward Viewer
         await rewardViewerForWatching();
     }
 }
 
 async function rewardViewerForWatching() {
     if (!currentUser) return;
-
-    // Track locally first
     let localWatchCount = parseInt(localStorage.getItem(`watch_count_${currentUser.id}`) || '0');
     localWatchCount++;
     localStorage.setItem(`watch_count_${currentUser.id}`, localWatchCount);
 
-    // Add money to database
     try {
         const { data: user } = await sb.from('users').select('balance').eq('uid', currentUser.id).single();
         if(user) {
@@ -593,22 +827,14 @@ async function rewardViewerForWatching() {
     } catch(e) { console.error("Reward Error", e); }
 }
 
-// 🔥 WATCH & EARN MODAL LOGIC 🔥
 window.openWatchEarn = async () => {
     if(!currentUser) return alert("Login to access Watch & Earn!");
     document.getElementById('watchEarnModal').classList.remove('hidden');
-
-    // Display Watch Count (Local)
     const count = localStorage.getItem(`watch_count_${currentUser.id}`) || '0';
     document.getElementById('watchCountDisplay').innerText = count;
-
-    // Display Earnings (DB Balance)
     const { data } = await sb.from('users').select('balance').eq('uid', currentUser.id).single();
-    if(data) {
-        document.getElementById('watchEarningsDisplay').innerText = (data.balance || 0).toFixed(4);
-    }
+    if(data) document.getElementById('watchEarningsDisplay').innerText = (data.balance || 0).toFixed(4);
     
-    // Auto-update UI if open
     if(window.watchInterval) clearInterval(window.watchInterval);
     window.watchInterval = setInterval(async () => {
         const { data: d } = await sb.from('users').select('balance').eq('uid', currentUser.id).single();
@@ -653,7 +879,7 @@ window.shareVideo = async (title, url) => {
     else { navigator.clipboard.writeText(url); alert("Link copied!"); }
 };
 
-// --- 8. COMMENTS, SEARCH & CHAT ---
+// --- 9. COMMENTS, SEARCH & CHAT ---
 window.openComments = async (videoId) => {
     activeVideoId = videoId;
     document.getElementById('commentModal').classList.remove('hidden');
@@ -761,7 +987,6 @@ window.openPublicProfile = async (targetUid, fallbackUsername) => {
     document.getElementById('publicMsgBtn').onclick = () => { openChat(targetUid, safeName, user.photo_url); };
     loadProfileVideos(targetUid, 'publicProfileGrid');
 
-    // Load Ads for Profile Screen
     renderPageAds('publicProfileScreen');
 };
 
@@ -845,7 +1070,7 @@ window.sendMessage = async () => {
     loadMessages();
 };
 
-// --- 9. UPLOAD & STORE ---
+// --- 10. UPLOAD & STORE ---
 function ensureUploadFields() {
     const priceContainer = document.getElementById('priceInputContainer');
     if(priceContainer && !document.getElementById('upiInputContainer')) {
@@ -977,7 +1202,7 @@ window.previewVideo = (input) => { if (input.files[0]) { const vid = document.ge
 window.previewAsset = (input) => { if (input.files[0]) { const img = document.getElementById('assetPreview'); img.src = URL.createObjectURL(input.files[0]); img.classList.remove('hidden'); document.getElementById('assetPlaceholder').classList.add('hidden'); } }
 
 
-// --- 10. UPDATED ASSET STORE ---
+// --- 11. UPDATED ASSET STORE ---
 window.filterStore = (category) => {
     currentStoreCategory = category;
     const buttons = ['cat-all', 'cat-emoji', 'cat-thumbnail', 'cat-sticker'];
@@ -1166,7 +1391,7 @@ async function triggerRealDownload(assetId, url) {
     }
 }
 
-// --- 11. PROFILE, STATS & ADMIN LOGIC ---
+// --- 12. PROFILE, STATS & ADMIN LOGIC ---
 
 window.openStats = async () => {
     document.getElementById('statsModal').classList.remove('hidden');
@@ -1262,8 +1487,8 @@ window.openAdminPanel = async () => {
             
             <!-- Rates -->
             <div>
-                <h3 class="font-bold text-white mb-2 text-sm">💰 Earning Rates</h3>
-                <div class="flex space-x-2">
+                <h3 class="font-bold text-white mb-2 text-sm">💰 Earning Rates & Limits</h3>
+                <div class="flex space-x-2 mb-2">
                     <div class="flex-1">
                         <label class="text-[10px] text-gray-400">$/View (Creator)</label>
                         <input type="number" step="0.0001" id="rateViewInput" value="${appRates.videoView}" class="w-full bg-black text-white p-2 text-xs rounded border border-gray-600">
@@ -1272,6 +1497,10 @@ window.openAdminPanel = async () => {
                         <label class="text-[10px] text-gray-400">$/Download</label>
                         <input type="number" step="0.01" id="rateDlInput" value="${appRates.assetDownload}" class="w-full bg-black text-white p-2 text-xs rounded border border-gray-600">
                     </div>
+                </div>
+                <div>
+                     <label class="text-[10px] text-gray-400 text-brand-500">Min. Withdrawal Amount ($)</label>
+                     <input type="number" step="1" id="minWithdrawalInput" value="${appSettings.minWithdrawal}" class="w-full bg-black text-white p-2 text-xs rounded border border-gray-600 border-brand-500">
                 </div>
             </div>
 
@@ -1341,6 +1570,7 @@ window.updateAppConfigFull = async () => {
     const updates = [
         { key: 'rate_video_view', value: document.getElementById('rateViewInput').value },
         { key: 'rate_asset_download', value: document.getElementById('rateDlInput').value },
+        { key: 'min_withdrawal', value: document.getElementById('minWithdrawalInput').value }, // 🔥 SAVE MIN LIMIT
         
         { key: 'ad_feed_top', value: document.getElementById('adFeedTop').value },
         { key: 'ad_feed_bottom', value: document.getElementById('adFeedBottom').value },
